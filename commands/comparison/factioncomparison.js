@@ -1,16 +1,16 @@
 const { SlashCommandBuilder } = require('discord.js');
 const factionActivityStore = require('../../factionActivityStore');
+const factionName = require("../../factionName");
 const { Chart } = require('chart.js/auto');
 const { createCanvas } = require('canvas');
 require('dotenv').config();
 
 module.exports = { 
-    data: new SlashCommandBuilder().setName('activitycomparison').setDescription('Provides activity compaison for current ranked war')
+    data: new SlashCommandBuilder().setName('factioncomparison').setDescription('Provides activity compaison for specified factions')
         .addStringOption((option) => option.setName("id").setDescription("The faction to compare").setRequired(false))
         .addStringOption((option) => option.setName("oppid").setDescription("The faction to compare").setRequired(false)),
     async execute(interaction) {
         try {
-            console.log(factionActivityStore);
             let id = Number(interaction.options.getString("id")); //converts to 0 when null
             let oppId = Number(interaction.options.getString("oppid"));
             const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
@@ -35,12 +35,12 @@ module.exports = {
                 labels: [...factionActivityStore.get(id).keys()].map(timestamp => new Date(timestamp).toLocaleString()),
                 datasets: [
                 {
-                    label: id,
+                    label: factionName.get(id),
                     data: [...factionActivityStore.get(id).values()],
                     borderColor: 'rgb(255, 0, 0)'
                 },
                 {
-                    label: oppId,
+                    label: factionName.get(oppId),
                     data: [...factionActivityStore.get(oppId).values()],
                     borderColor: 'rgb(0, 0, 255)'
                 }]

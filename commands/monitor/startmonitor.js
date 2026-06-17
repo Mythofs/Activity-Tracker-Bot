@@ -1,6 +1,9 @@
 const { SlashCommandBuilder } = require('discord.js');
 const factionActivityStore = require('../../factionActivityStore');
 const individualActivityStore = require('../../individualActivityStore')
+const monitorStore = require("../../monitorStore");
+const factionName = require("../../factionName");
+const individualName = require("../../individualName");
 require('dotenv').config();
 
 module.exports = {
@@ -9,8 +12,8 @@ module.exports = {
     async execute(interaction) {
         const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
         const facId = interaction.options.getString("id", true);
-        interaction.reply(`Started monitoring ${facId}`);
         startActivityInterval(process.env.API_KEY, facId, channel);
+        interaction.reply(`Started monitoring ${factionName.get(facId)}`);
     },
     startActivityInterval,
 }
@@ -18,13 +21,17 @@ async function startActivityInterval(apiKey, facId, channel)
 {
     try {
         facId = Number(facId);
+        const facInfo = safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${apiKey}`);
+        factionName.set(facId, facInfo.basic.name);
         if(!factionActivityStore.has(facId))
             factionActivityStore.set(facId, new Map());
         checkActivity(apiKey, facId, channel);
         const intervalId = setInterval(async () => {
             checkActivity(apiKey, facId, channel);
         }, 300000);
+        monitorStore.put(facId, intervalId);
         setTimeout(async () => {
+            monitorStore.delete(facId);
             clearInterval(intervalId);
             channel.send(`Completed monitoring of ${facId}`);
         }, 86400000);
@@ -41,12 +48,14 @@ async function checkActivity(apiKey, facId, channel) {
         for(const member of memberData.members) {
             if(!individualActivityStore.has(member.id))
                 individualActivityStore.set(member.id, new Map());
+            if(!individualName.has(member.id))
+                individualName.set(member.id, member.name);
             if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 300000) {
                 console.log(member.name);
+                individualActivityStore.get(member.id).set(Date.now(), 1);
                 count++;
-                if(individualActivityStore.has(member.id))
-                    individualActivityStore.get(member.id).set(Date.now(), true);
             }
+            individualActivityStore.get(member.id).set(Date.now(), 0);
         }
         factionActivityStore.get(facId).set(Date.now(), count);
     }
