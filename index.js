@@ -1,6 +1,11 @@
 const { Client, Collection, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
+const { Chart } = require('chart.js/auto');
+const { createCanvas } = require('canvas');
+const factionActivityStore = require('./factionActivityStore.js')
+const individualActivityStore = require('./individualActivityStore.js');
+const { startActivityInterval } = require('./commands/monitor/startmonitor.js/index.js');
 require('dotenv').config();
 
 
@@ -37,14 +42,88 @@ for(const file of eventFiles) {
     }
 }
 
-const db = new Database('mydb.db');
 client.once('clientReady', async () => {
-    await setUp(db);
+    const apiKey = process.env.API_KEY;
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
-    db.prepare('CREATE TABLE IF NOT EXISTS item_ids (id INTEGER UNIQUE)').run();
-    for(const item of db.prepare('SELECT * FROM item_ids').all())
-        monitor.set(String(item.id), setInterval(async () => createInterval(item.id, channel), 65000));
-    console.log("Setup complete");
+    startWarInterval(apiKey, channel);
 });
-
 client.login(process.env.TOKEN);
+
+async function startWarInterval(apiKey, channel)
+{
+    try {
+        const id = await checkForWar(apiKey, channel);
+        if(id != -1) {
+            if(factionActivityStore.has(id))
+                factionActivityStore.get(id).clear();
+            startActivityInterval(apiKey, id, channel);
+            startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
+            return;
+        }
+        const intervalId = setInterval(async () => {
+            const id = await checkForWar(apiKey, channel);
+            if(id != -1) {
+                clearInterval(intervalId);
+                startActivityInterval(apiKey, id, channel);
+                startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
+                waitForWarEnd(apiKey, channel);
+            }
+        }, 3600000);
+    }
+    catch(e) { 
+        channel.send(`Error while running war interval ${e}`);
+        console.log(`Error while running war interval ${e}`);
+    }
+}
+async function checkForWar(apiKey, channel)
+{
+    try {
+        const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
+        if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null)
+            return -1;
+        return warData.wars.ranked.factions.find(fac => fac.id != process.env.FAC_ID).id;
+    }
+    catch(e) { 
+        channel.send(`Error while checking for war ${e}`);
+        console.log(`Error while checking for war ${e}`);
+        return -1;
+    }
+}
+async function waitForWarEnd(apiKey, channel)
+{
+    try {
+        const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
+        if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null) {
+            startWarInterval(apiKey, channel);
+            return;
+        }
+        const intervalId = setInterval(async () => {
+            const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
+            if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null) {
+                clearInterval(intervalId);
+                startWarInterval(apiKey, channel);
+            }
+        })
+    }
+    catch(e) {
+        channel.send(`Error while starting war end interval ${e}`);
+        console.log(`Error while starting war end interval ${e}`);
+    }
+}
+async function safeFetch(url, channel) {
+    let response;
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        channel.send(`Error while fetching ${url}, ${error}`);
+    }
+    let data;
+    try {
+        data = await response.json();
+    } catch(error) {
+        channel.send(`Invalid JSON from ${url}, ${error}`);
+    }
+    if (!response.ok)
+        channel.send(`Error from ${url}: ${JSON.stringify(data)}`);
+    return data;
+}
