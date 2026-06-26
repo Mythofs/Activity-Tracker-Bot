@@ -1,35 +1,32 @@
 const { SlashCommandBuilder } = require('discord.js');
-const factionActivityStore = require('../../factionActivityStore');
-const individualActivityStore = require('../../individualActivityStore')
 const monitorStore = require("../../monitorStore");
-const factionName = require("../../factionName");
-const individualName = require("../../individualName");
-require('dotenv').config();
+const db = require("../../db.js");
 
 module.exports = {
     data: new SlashCommandBuilder().setName("startmonitor").setDescription("Starts monitoring a faction's activity")
         .addStringOption((option) => option.setName("id").setDescription("The faction to monitor").setRequired(true)),
     async execute(interaction) {
-        const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
-        const facId = interaction.options.getString("id", true);
-        startActivityInterval(process.env.API_KEY, facId, channel);
-        interaction.reply(`Started monitoring ${factionName.get(facId)}`);
+        try {
+            const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
+            const facId = interaction.options.getString("id", true);
+            const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`);
+            await db.execute('REPLACE INTO faction_name VALUES (?, ?)', [Number(facId), facInfo.basic.name]);
+            await startActivityInterval(process.env.API_KEY, facId, facInfo, channel);
+            interaction.reply(`Started monitoring ${facInfo.basic.name}`);
+        }
+        catch(e) { interaction.reply(`Error while starting monitoring ${e}`); }
     },
     startActivityInterval,
 }
-async function startActivityInterval(apiKey, facId, channel)
+async function startActivityInterval(apiKey, facId, facInfo, channel)
 {
     try {
         facId = Number(facId);
-        const facInfo = safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${apiKey}`);
-        factionName.set(facId, facInfo.basic.name);
-        if(!factionActivityStore.has(facId))
-            factionActivityStore.set(facId, new Map());
         checkActivity(apiKey, facId, channel);
         const intervalId = setInterval(async () => {
             checkActivity(apiKey, facId, channel);
         }, 300000);
-        monitorStore.put(facId, intervalId);
+        monitorStore.set(facId, intervalId);
         setTimeout(async () => {
             monitorStore.delete(facId);
             clearInterval(intervalId);
@@ -46,18 +43,15 @@ async function checkActivity(apiKey, facId, channel) {
         const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
         let count = 0;
         for(const member of memberData.members) {
-            if(!individualActivityStore.has(member.id))
-                individualActivityStore.set(member.id, new Map());
-            if(!individualName.has(member.id))
-                individualName.set(member.id, member.name);
+            await db.execute('INSERT IGNORE INTO individual_name VALUES (?, ?)', [member.id, member.name]);
             if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 300000) {
                 console.log(member.name);
-                individualActivityStore.get(member.id).set(Date.now(), 1);
+                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 1]);
                 count++;
             }
-            individualActivityStore.get(member.id).set(Date.now(), 0);
+            await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 0]);
         }
-        factionActivityStore.get(facId).set(Date.now(), count);
+        await db.execute('REPLACE INTO faction_activity VALUES (?, ?, ?)', [facId, Date.now(), count]);
     }
     catch(e) {
         channel.send(`Error while checking activity ${e}`);

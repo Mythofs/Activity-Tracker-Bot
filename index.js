@@ -1,13 +1,9 @@
+const path = require('node:path');
+require('dotenv').config({ path: path.resolve(__dirname, '../private/.env') });
 const { Client, Collection, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
 const fs = require('node:fs');
-const path = require('node:path');
-const { Chart } = require('chart.js/auto');
-const { createCanvas } = require('canvas');
-const factionActivityStore = require('./factionActivityStore.js')
-const individualActivityStore = require('./individualActivityStore.js');
-const { startActivityInterval } = require('./commands/monitor/startmonitor.js/index.js');
-require('dotenv').config();
-
+const { startActivityInterval } = require('./commands/monitor/startmonitor.js');
+const db = require("./db.js");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -45,6 +41,10 @@ for(const file of eventFiles) {
 client.once('clientReady', async () => {
     const apiKey = process.env.API_KEY;
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
+    await db.execute('CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))');
+    await db.execute('CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))');
+    await db.execute('CREATE TABLE IF NOT EXISTS faction_name (id INTEGER UNIQUE, name VARCHAR(255))');
+    await db.execute('CREATE TABLE IF NOT EXISTS individual_name (id INTEGER UNIQUE, name VARCHAR(255))');
     startWarInterval(apiKey, channel);
 });
 client.login(process.env.TOKEN);
@@ -54,8 +54,8 @@ async function startWarInterval(apiKey, channel)
     try {
         const id = await checkForWar(apiKey, channel);
         if(id != -1) {
-            if(factionActivityStore.has(id))
-                factionActivityStore.get(id).clear();
+            await db.execute('DELETE FROM faction_activity WHERE id = ?', [id]);
+            await db.execute('DELETE FROM faction_activity WHERE id = ?', [process.env.FAC_ID]);
             startActivityInterval(apiKey, id, channel);
             startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
             return;
@@ -79,7 +79,7 @@ async function checkForWar(apiKey, channel)
 {
     try {
         const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-        if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null)
+        if(warData.wars.ranked == null || warData.wars.ranked.end != null)
             return -1;
         return warData.wars.ranked.factions.find(fac => fac.id != process.env.FAC_ID).id;
     }

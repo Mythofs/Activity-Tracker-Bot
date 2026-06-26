@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const monitorStore = require("../../monitorStore");
-const factionName = require("../../factionName");
-require('dotenv').config();
+const db = require("../../db.js");
 
 module.exports = {
     data: new SlashCommandBuilder().setName("listmonitor").setDescription("Lists all factions currently being monitored"),
@@ -9,7 +8,10 @@ module.exports = {
         const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
         try {
             let str = "";
-            [...monitorStore.keys()].foreach(key => str += `${factionName.get(key)} (${key}) `);
+            for(const key of [...monitorStore.keys()]) {
+                const [name] = await db.execute('SELECT name FROM faction_name WHERE id = ?', [key]);
+                str += `${name[0].name} (${key})`;
+            }
             interaction.reply(str);
         }
         catch(e) {
