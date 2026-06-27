@@ -6,15 +6,17 @@ module.exports = {
     data: new SlashCommandBuilder().setName("startmonitor").setDescription("Starts monitoring a faction's activity")
         .addStringOption((option) => option.setName("id").setDescription("The faction to monitor").setRequired(true)),
     async execute(interaction) {
+        await interaction.deferReply();
+        const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
         try {
-            const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
             const facId = interaction.options.getString("id", true);
+            await db.execute('DELETE FROM faction_activity WHERE id = ?', [facId]);
             const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`);
             await db.execute('REPLACE INTO faction_name VALUES (?, ?)', [Number(facId), facInfo.basic.name]);
             await startActivityInterval(process.env.API_KEY, facId, facInfo, channel);
-            interaction.reply(`Started monitoring ${facInfo.basic.name}`);
+            return interaction.editReply(`Started monitoring ${facInfo.basic.name}`);
         }
-        catch(e) { interaction.reply(`Error while starting monitoring ${e}`); }
+        catch(e) { return interaction.editReply(`Error while starting monitoring ${e}`); }
     },
     startActivityInterval,
 }
@@ -22,23 +24,28 @@ async function startActivityInterval(apiKey, facId, facInfo, channel)
 {
     try {
         facId = Number(facId);
-        checkActivity(apiKey, facId, channel);
+        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
+        for(const member of memberData.members)
+            await db.execute('DELETE FROM individual_activity WHERE id = ?', [member.id]);
+        checkActivity(apiKey, facId, channel, memberData);
         const intervalId = setInterval(async () => {
-            checkActivity(apiKey, facId, channel);
-        }, 300000);
+            const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
+            checkActivity(apiKey, facId, channel, memberData);
+            const [rows] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
+            if(rows >= 240) {
+                monitorStore.delete(facId);
+                clearInterval(intervalId);
+                channel.send(`Completed monitoring of ${facId}`);
+            }
+        }, 600000);
         monitorStore.set(facId, intervalId);
-        setTimeout(async () => {
-            monitorStore.delete(facId);
-            clearInterval(intervalId);
-            channel.send(`Completed monitoring of ${facId}`);
-        }, 86400000);
     }
     catch(e) {
         channel.send(`Error while starting activity interval ${e}`);
         console.log(`Error while starting activity interval ${e}`);
     }
 }
-async function checkActivity(apiKey, facId, channel) {
+async function checkActivity(apiKey, facId, channel, memberData) {
     try {    
         const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
         let count = 0;

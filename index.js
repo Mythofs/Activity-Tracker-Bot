@@ -54,8 +54,6 @@ async function startWarInterval(apiKey, channel)
     try {
         const id = await checkForWar(apiKey, channel);
         if(id != -1) {
-            await db.execute('DELETE FROM faction_activity WHERE id = ?', [id]);
-            await db.execute('DELETE FROM faction_activity WHERE id = ?', [process.env.FAC_ID]);
             startActivityInterval(apiKey, id, channel);
             startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
             return;
