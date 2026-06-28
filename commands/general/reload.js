@@ -6,10 +6,11 @@ module.exports = {
     data: new SlashCommandBuilder().setName('reload').setDescription('Reloads a command.')
         .addStringOption((option) => option.setName('command').setDescription('The command to reload.').setRequired(true)),
     async execute(interaction) {
+        await interaction.deferReply();
         const commandName = interaction.options.getString('command', true).toLowerCase();
         const command = interaction.client.commands.get(commandName);
         if(!command) {
-            return interaction.reply(`There is no command with name \`${commandName}\`!`);
+            return interaction.editReply(`There is no command with name \`${commandName}\`!`);
         }
 
         const commandsBasePath = path.join(__dirname, '..');
@@ -25,17 +26,17 @@ module.exports = {
             }
         }
         if (!commandPath)
-            return interaction.reply(`Could not find the file for command \`${commandName}\`!`);
+            return interaction.editReply(`Could not find the file for command \`${commandName}\`!`);
 
         delete require.cache[require.resolve(commandPath)];
         try {
             const newCommand = require(commandPath);
             interaction.client.commands.set(newCommand.data.name, newCommand);
-            return interaction.reply(`Command \`${commandName}\` was reloaded!`);
+            return interaction.editReply(`Command \`${commandName}\` was reloaded!`);
         }
         catch (error) {
             console.error(error);
-            return interaction.reply(`There was an error while reloading \`${commandName}\`:\n\`${error.message}\``);
+            return interaction.editReply(`There was an error while reloading \`${commandName}\`:\n\`${error.message}\``);
         }
     }
 }

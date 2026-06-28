@@ -11,7 +11,7 @@ module.exports = {
         try {
             const facId = interaction.options.getString("id", true);
             await db.execute('DELETE FROM faction_activity WHERE id = ?', [facId]);
-            const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`);
+            const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`, channel);
             await db.execute('REPLACE INTO faction_name VALUES (?, ?)', [Number(facId), facInfo.basic.name]);
             await startActivityInterval(process.env.API_KEY, facId, facInfo, channel);
             return interaction.editReply(`Started monitoring ${facInfo.basic.name}`);
@@ -24,12 +24,12 @@ async function startActivityInterval(apiKey, facId, facInfo, channel)
 {
     try {
         facId = Number(facId);
-        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
+        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel)
         for(const member of memberData.members)
             await db.execute('DELETE FROM individual_activity WHERE id = ?', [member.id]);
         checkActivity(apiKey, facId, channel, memberData);
         const intervalId = setInterval(async () => {
-            const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
+            const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel)
             checkActivity(apiKey, facId, channel, memberData);
             const [rows] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
             if(rows >= 240) {
