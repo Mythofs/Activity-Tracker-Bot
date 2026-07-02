@@ -51,12 +51,13 @@ async function checkActivity(apiKey, facId, channel, memberData) {
         let count = 0;
         for(const member of memberData.members) {
             await db.execute('INSERT IGNORE INTO individual_name VALUES (?, ?)', [member.id, member.name]);
-            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 300000) {
+            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 600000) {
                 console.log(member.name);
                 await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 1]);
                 count++;
             }
-            await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 0]);
+            else
+                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 0]);
         }
         await db.execute('REPLACE INTO faction_activity VALUES (?, ?, ?)', [facId, Date.now(), count]);
     }
