@@ -31,8 +31,8 @@ async function startActivityInterval(apiKey, facId, facInfo, channel)
         const intervalId = setInterval(async () => {
             const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel)
             checkActivity(apiKey, facId, channel, memberData);
-            const [rows] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
-            if(rows >= 240) {
+            const [rows] = await db.execute('SELECT COUNT(*) AS cnt FROM faction_activity WHERE id = ?', [facId]);
+            if(rows[0].cnt >= 240) {
                 monitorStore.delete(facId);
                 clearInterval(intervalId);
                 channel.send(`Completed monitoring of ${facId}`);
