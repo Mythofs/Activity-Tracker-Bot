@@ -2,8 +2,8 @@ const path = require('node:path');
 require('dotenv').config({ path: path.resolve(__dirname, '../private/.env') });
 const { Client, Collection, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
 const fs = require('node:fs');
-const { startActivityInterval } = require('./commands/monitor/startmonitor.js');
 const db = require("./db.js");
+const safeFetch = require("./safeFetch.js");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -45,83 +45,45 @@ client.once('clientReady', async () => {
     await db.execute('CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))');
     await db.execute('CREATE TABLE IF NOT EXISTS faction_name (id INTEGER UNIQUE, name VARCHAR(255))');
     await db.execute('CREATE TABLE IF NOT EXISTS individual_name (id INTEGER UNIQUE, name VARCHAR(255))');
-    startWarInterval(apiKey, channel);
+    await db.execute('CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER)');
+    setInterval(async() => await monitorInterval(apiKey, channel), 600000);
 });
 client.login(process.env.TOKEN);
 
-async function startWarInterval(apiKey, channel)
+async function monitorInterval(apiKey, channel)
 {
-    try {
-        const id = await checkForWar(apiKey, channel);
-        if(id != -1) {
-            startActivityInterval(apiKey, id, channel);
-            startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
-            return;
+    const [rows] = await db.execute("SELECT id FROM monitor_store");
+    for(const row in rows)
+    {
+        const facId = row.id;
+        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
+        checkActivity(apiKey, facId, channel, memberData);
+        const [data] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
+        if(data.length >= 245) {
+            await db.execute('DELETE FROM monitor_store WHERE id = ?', [facId]);
+            const [name] = await db.execute('SELECT1 FROM faction_name WHERE id = ?', [facId]);
+            channel.send(`Completed activity tracking of ${name[0].name} (${facId})`);
         }
-        const intervalId = setInterval(async () => {
-            const id = await checkForWar(apiKey, channel);
-            if(id != -1) {
-                clearInterval(intervalId);
-                startActivityInterval(apiKey, id, channel);
-                startActivityInterval(apiKey, Number(process.env.FAC_ID), channel);
-                waitForWarEnd(apiKey, channel);
-            }
-        }, 3600000);
-    }
-    catch(e) { 
-        channel.send(`Error while running war interval ${e}`);
-        console.log(`Error while running war interval ${e}`);
     }
 }
-async function checkForWar(apiKey, channel)
-{
-    try {
-        const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-        if(warData.wars.ranked == null || warData.wars.ranked.end != null)
-            return -1;
-        return warData.wars.ranked.factions.find(fac => fac.id != process.env.FAC_ID).id;
-    }
-    catch(e) { 
-        channel.send(`Error while checking for war ${e}`);
-        console.log(`Error while checking for war ${e}`);
-        return -1;
-    }
-}
-async function waitForWarEnd(apiKey, channel)
-{
-    try {
-        const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-        if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null) {
-            startWarInterval(apiKey, channel);
-            return;
-        }
-        const intervalId = setInterval(async () => {
-            const warData = await safeFetch(`https://api.torn.com/v2/faction/wars?comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-            if(Array.isArray(warData.wars.ranked) || warData.wars.ranked.end != null) {
-                clearInterval(intervalId);
-                startWarInterval(apiKey, channel);
+async function checkActivity(apiKey, facId, channel, memberData) {
+    try {    
+        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
+        let count = 0;
+        for(const member of memberData.members) {
+            await db.execute('INSERT IGNORE INTO individual_name VALUES (?, ?)', [member.id, member.name]);
+            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 600000) {
+                console.log(member.name);
+                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 1]);
+                count++;
             }
-        })
+            else
+                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 0]);
+        }
+        await db.execute('REPLACE INTO faction_activity VALUES (?, ?, ?)', [facId, Date.now(), count]);
     }
     catch(e) {
-        channel.send(`Error while starting war end interval ${e}`);
-        console.log(`Error while starting war end interval ${e}`);
+        channel.send(`Error while checking activity ${e}`);
+        console.log(`Error while checking activity ${e}`);
     }
-}
-async function safeFetch(url, channel) {
-    let response;
-    try {
-        response = await fetch(url);
-    } catch (error) {
-        channel.send(`Error while fetching ${url}, ${error}`);
-    }
-    let data;
-    try {
-        data = await response.json();
-    } catch(error) {
-        channel.send(`Invalid JSON from ${url}, ${error}`);
-    }
-    if (!response.ok)
-        channel.send(`Error from ${url}: ${JSON.stringify(data)}`);
-    return data;
 }
