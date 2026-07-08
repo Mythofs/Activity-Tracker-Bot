@@ -13,7 +13,7 @@ module.exports = {
             await db.execute('DELETE FROM faction_activity WHERE id = ?', [facId]);
             const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`, channel);
             await db.execute('REPLACE INTO faction_name VALUES (?, ?)', [Number(facId), facInfo.basic.name]);
-            await db.execute("INSERT IGNORE INTO monitor_store (?)", [facId]);
+            await db.execute("INSERT IGNORE INTO monitor_store (id) VALUES (?)", [facId]);
             return interaction.editReply(`Started monitoring ${facInfo.basic.name}`);
         }
         catch(e) { return interaction.editReply(`Error while starting monitoring ${e}`); }

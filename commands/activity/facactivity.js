@@ -38,7 +38,7 @@ module.exports = {
                         break;
                     }
                 const adjustedOppData = [ ...oppActivityData.slice(index),...oppActivityData.slice(0, index)];
-                data.dataset.push({
+                data.datasets.push({
                     label: oppname[0].name,
                     data: adjustedOppData.map(data => data.numactive),
                     borderColor: "rgb(0,0,255)",

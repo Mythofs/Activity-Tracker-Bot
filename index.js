@@ -45,7 +45,15 @@ client.once('clientReady', async () => {
     await db.execute('CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))');
     await db.execute('CREATE TABLE IF NOT EXISTS faction_name (id INTEGER UNIQUE, name VARCHAR(255))');
     await db.execute('CREATE TABLE IF NOT EXISTS individual_name (id INTEGER UNIQUE, name VARCHAR(255))');
-    await db.execute('CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)');
+    const [facs] = await db.execute("SELECT name, id FROM faction_name");
+    for(const fac of facs) {
+        const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [fac.id]);
+        if(data.length < 245) {
+            await db.execute("DELETE FROM faction_activity WHERE id = ?", [fac.id]);
+            await db.execute("INSERT IGNORE INTO monitor_store (id) VALUES (?)", [fac.id]);
+        }
+    }
     setInterval(async() => await monitorInterval(apiKey, channel), 600000);
 });
 client.login(process.env.TOKEN);
