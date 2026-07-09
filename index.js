@@ -44,7 +44,7 @@ client.once("clientReady", async () => {
     await db.execute("CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
-    const [facs] = await db.execute("SELECT name, id FROM faction_name");
+    const [facs] = await db.execute("SELECT id, name FROM faction_activity");
     for(const fac of facs) {
         const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [fac.id]);
         if(data.length < 245) {

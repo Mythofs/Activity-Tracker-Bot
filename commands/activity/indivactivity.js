@@ -14,7 +14,7 @@ module.exports = {
             const oppid = interaction.options.getInteger("oppid");
             const [activityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
-                return interaction.reply(`No player ${id} found`);
+                return await interaction.editReply(`No player ${id} found`);
             const chart = new QuickChart();
             const data = {
                 labels: activityData.map(data => new Date(data.timestamp).toLocaleString()),
@@ -29,7 +29,7 @@ module.exports = {
             if(oppid != null) {
                 const [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
-                    return await interaction.reply(`No player ${oppid} found`);
+                    return await interaction.editReply(`No player ${oppid} found`);
                 let index = 0;
                 for(const i in oppActivityData)
                     if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {

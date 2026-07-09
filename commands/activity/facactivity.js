@@ -12,9 +12,9 @@ module.exports = {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
             const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
-            const [activityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_name WHERE id = ?", [id]);
+            const [activityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
-                return await interaction.reply(`No faction ${id} found`);
+                return await interaction.editReply(`No faction ${id} found`);
             const chart = new QuickChart();
             const data = {
                 labels: activityData.map(data => new Date(data.timestamp).toLocaleString()),
@@ -27,9 +27,9 @@ module.exports = {
                 }]
             }
             if(oppid != null) {
-                const [oppActivityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_name WHERE id = ?", [oppid]);
+                const [oppActivityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
-                    return await interaction.reply(`No faction with ${oppid} found`);
+                    return await interaction.editReply(`No faction with ${oppid} found`);
                 let index = 0;
                 for(const i in oppActivityData)
                     if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
