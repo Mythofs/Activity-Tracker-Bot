@@ -12,35 +12,33 @@ module.exports = {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
             const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
-            const [name] = await db.execute('SELECT name FROM faction_name WHERE id = ?', [id]);
-            if(name.length == 0)
+            const [activityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_name WHERE id = ?", [id]);
+            if(activityData.length == 0)
                 return await interaction.reply(`No faction ${id} found`);
             const chart = new QuickChart();
-            const [activityData] = await db.execute('SELECT timestamp, numactive FROM faction_activity WHERE id = ?', [id]);
             const data = {
                 labels: activityData.map(data => new Date(data.timestamp).toLocaleString()),
                 datasets: [
                 {
-                    label: name[0].name,
+                    label: activityData[0].name,
                     data: activityData.map(data => data.numactive),
-                    borderColor: 'rgb(255, 0, 0)',
+                    borderColor: "rgb(255, 0, 0)",
                     fill: false
                 }]
             }
             if(oppid != null) {
-                const [oppname] = await db.execute("SELECT name FROM faction_name WHERE id = ?", [oppid]);
-                if(oppname.length == 0)
+                const [oppActivityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_name WHERE id = ?", [oppid]);
+                if(oppActivityData.length == 0)
                     return await interaction.reply(`No faction with ${oppid} found`);
-                const [oppActivityData] = await db.execute("SELECT timestamp, numactive FROM faction_activity WHERE id = ?", [oppid]);
                 let index = 0;
-                for(const oppdata in oppActivityData)
-                    if(Math.abs(oppActivityData[oppdata].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
-                        index = oppdata;
+                for(const i in oppActivityData)
+                    if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
+                        index = i;
                         break;
                     }
                 const adjustedOppData = [ ...oppActivityData.slice(index),...oppActivityData.slice(0, index)];
                 data.datasets.push({
-                    label: oppname[0].name,
+                    label: oppActivityData[0].name,
                     data: adjustedOppData.map(data => data.numactive),
                     borderColor: "rgb(0,0,255)",
                     fill: false
@@ -63,7 +61,7 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const buffer = await chart.toBinary();
-            return interaction.editReply({files: [{attachment: buffer, name: 'activityGraph.png'}]});
+            return interaction.editReply({files: [{attachment: buffer, name: "activityGraph.png"}]});
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);

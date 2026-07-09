@@ -1,31 +1,31 @@
-const path = require('node:path');
-require('dotenv').config({ path: path.resolve(__dirname, '../private/.env') });
-const { Client, Collection, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
-const fs = require('node:fs');
+const path = require("node:path");
+require("dotenv").config({ path: path.resolve(__dirname, "../private/.env") });
+const { Client, Collection, Events, GatewayIntentBits, MessageFlags } = require("discord.js");
+const fs = require("node:fs");
 const db = require("./db.js");
 const safeFetch = require("./safeFetch.js");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.commands = new Collection();
-const foldersPath = path.join(__dirname, 'commands');
+const foldersPath = path.join(__dirname, "commands");
 const commandFolders = fs.readdirSync(foldersPath);
 
 for(const folder of commandFolders) {
     const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.js'));
+    const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
     for(const file of commandFiles) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
-        if('data' in command && 'execute' in command)
+        if("data" in command && "execute" in command)
             client.commands.set(command.data.name, command);
         else
             console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
     }
 }
 
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter((file) => file.endsWith('.js'));
+const eventsPath = path.join(__dirname, "events");
+const eventFiles = fs.readdirSync(eventsPath).filter((file) => file.endsWith(".js"));
 
 for(const file of eventFiles) {
     const filePath = path.join(eventsPath, file);
@@ -38,19 +38,18 @@ for(const file of eventFiles) {
     }
 }
 
-client.once('clientReady', async () => {
+client.once("clientReady", async () => {
     const apiKey = process.env.API_KEY;
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
-    await db.execute('CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))');
-    await db.execute('CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))');
-    await db.execute('CREATE TABLE IF NOT EXISTS faction_name (id INTEGER UNIQUE, name VARCHAR(255))');
-    await db.execute('CREATE TABLE IF NOT EXISTS individual_name (id INTEGER UNIQUE, name VARCHAR(255))');
-    await db.execute('CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)');
+    await db.execute("CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
+    await db.execute("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
+    await db.execute("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
     const [facs] = await db.execute("SELECT name, id FROM faction_name");
     for(const fac of facs) {
         const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [fac.id]);
         if(data.length < 245) {
             await db.execute("DELETE FROM faction_activity WHERE id = ?", [fac.id]);
+            await db.execute("DELETE FROM individual_activity WHERE facid = ?", [fac.id]);
             await db.execute("INSERT IGNORE INTO monitor_store (id) VALUES (?)", [fac.id]);
         }
     }
@@ -68,11 +67,10 @@ async function monitorInterval(apiKey, channel)
             const facId = row.id;
             const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
             checkActivity(apiKey, facId, channel, memberData);
-            const [data] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
+            const [data] = await db.execute("SELECT name FROM faction_activity WHERE id = ?", [facId]);
             if(data.length >= 245) {
-                await db.execute('DELETE FROM monitor_store WHERE id = ?', [facId]);
-                const [name] = await db.execute('SELECT1 FROM faction_name WHERE id = ?', [facId]);
-                channel.send(`Completed activity tracking of ${name[0].name} (${facId})`);
+                await db.execute("DELETE FROM monitor_store WHERE id = ?", [facId]);
+                channel.send(`Completed activity tracking of ${data[0].name} (${facId})`);
             }
         }
     }
@@ -86,23 +84,26 @@ async function checkActivity(apiKey, facId, channel, memberData) {
         const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`)
         let count = 0;
         for(const member of memberData.members) {
-            await db.execute('INSERT IGNORE INTO individual_name VALUES (?, ?)', [member.id, member.name]);
             if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - new Date(member.last_action.stamp).getDate() < 600000) {
                 console.log(member.name);
-                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 1]);
+                await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [member.id, member.name, facId, Date.now(), 1]);
                 count++;
             }
             else
-                await db.execute('REPLACE INTO individual_activity VALUES (?, ?, ?)', [member.id, Date.now(), 0]);
+                await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [member.id, member.name, facId, Date.now(), 0]);
         }
-        await db.execute('REPLACE INTO faction_activity VALUES (?, ?, ?)', [facId, Date.now(), count]);
+        const [rows] = await db.execute("SELECT name FROM faction_activity WHERE id = ?", [facId]);
+        let name = "";
+        if(rows.length == 0) {
+            const facInfo = await safeFetch(`https://api.torn.com/v2/faction/${facId}/basic?comment=Activity%20Tracker&key=${process.env.API_KEY}`, channel);
+            name = facInfo.basic.name;
+        }
+        else
+            name = rows[0].name;
+        await db.execute("REPLACE INTO faction_activity VALUES (?, ?, ?, ?)", [facId, name, Date.now(), count]);
     }
     catch(e) {
         channel.send(`Error while checking activity ${e}`);
         console.log(`Error while checking activity ${e}`);
     }
-}
-async function clearActivity(apiKey, channel)
-{
-    
 }
