@@ -8,6 +8,7 @@ module.exports = {
         .addIntegerOption((option) => option.setName("oppid").setDescription("The faction id to compare")),
     async execute(interaction) {
         try {
+            await interaction.deferReply();
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
             const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
@@ -62,11 +63,11 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const buffer = await chart.toBinary();
-            return interaction.reply({files: [{attachment: buffer, name: 'activityGraph.png'}]});
+            return interaction.editReply({files: [{attachment: buffer, name: 'activityGraph.png'}]});
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);
-            return interaction.reply(`Error while sending activity graph ${e}`);
+            channel.send(`Error while sending activity graph ${e}`);
         }
     },
 };

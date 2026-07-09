@@ -54,24 +54,31 @@ client.once('clientReady', async () => {
             await db.execute("INSERT IGNORE INTO monitor_store (id) VALUES (?)", [fac.id]);
         }
     }
+    monitorInterval(apiKey, channel);
     setInterval(async() => await monitorInterval(apiKey, channel), 600000);
 });
 client.login(process.env.TOKEN);
 
 async function monitorInterval(apiKey, channel)
 {
-    const [rows] = await db.execute("SELECT id FROM monitor_store");
-    for(const row in rows)
-    {
-        const facId = row.id;
-        const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-        checkActivity(apiKey, facId, channel, memberData);
-        const [data] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
-        if(data.length >= 245) {
-            await db.execute('DELETE FROM monitor_store WHERE id = ?', [facId]);
-            const [name] = await db.execute('SELECT1 FROM faction_name WHERE id = ?', [facId]);
-            channel.send(`Completed activity tracking of ${name[0].name} (${facId})`);
+    try {
+        const [rows] = await db.execute("SELECT id FROM monitor_store");
+        for(const row of rows)
+        {
+            const facId = row.id;
+            const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
+            checkActivity(apiKey, facId, channel, memberData);
+            const [data] = await db.execute('SELECT 1 FROM faction_activity WHERE id = ?', [facId]);
+            if(data.length >= 245) {
+                await db.execute('DELETE FROM monitor_store WHERE id = ?', [facId]);
+                const [name] = await db.execute('SELECT1 FROM faction_name WHERE id = ?', [facId]);
+                channel.send(`Completed activity tracking of ${name[0].name} (${facId})`);
+            }
         }
+    }
+    catch(e) {
+        channel.send(`Error while checking activity ${e}`);
+        console.log(`Error while checking activity ${e}`);
     }
 }
 async function checkActivity(apiKey, facId, channel, memberData) {
@@ -94,4 +101,8 @@ async function checkActivity(apiKey, facId, channel, memberData) {
         channel.send(`Error while checking activity ${e}`);
         console.log(`Error while checking activity ${e}`);
     }
+}
+async function clearActivity(apiKey, channel)
+{
+    
 }
