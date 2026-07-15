@@ -16,33 +16,73 @@ module.exports = {
             if(activityData.length == 0)
                 return await interaction.editReply(`No player ${id} found`);
             const chart = new QuickChart();
-            const data = {
-                labels: activityData.map(data => new Date(data.timestamp).toLocaleString()),
-                datasets: [
-                {
-                    label: activityData[0].name,
-                    data: activityData.map(data => data.active),
-                    borderColor: 'rgb(255, 0, 0)',
-                    fill: false
-                }]
-            }
-            if(oppid != null) {
+            let data;
+            if(oppid) {
                 const [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
                     return await interaction.editReply(`No player ${oppid} found`);
-                let index = 0;
-                for(const i in oppActivityData)
-                    if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
-                        index = i;
-                        break;
-                    }
-                const adjustedOppData = [ ...oppActivityData.slice(index),...oppActivityData.slice(0, index)];
-                data.datasets.push({
-                    label: oppActivityData[0].name,
-                    data: adjustedOppData.map(data => data.active),
-                    borderColor: "rgb(0,0,255)",
-                    fill: false
-                })
+                let labels, dataPoints, oppDataPoints;
+                if(activityData.length > oppActivityData) {
+                    labels = oppActivityData.map(data => new Date(data.timestamp).toLocaleString());
+                    if(labels.length > 250)
+                        labels = labels.slice(-250);
+                    oppDataPoints = oppActivityData.map(data => data.active).slice(-1 * labels.length);
+                    let index = -1;
+                    for(let i = activityData.length - oppDataPoints.length; i >= 0; i--)
+                        if(Math.abs(activityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                            index = i;
+                            break;
+                        }
+                    if(index = -1)
+                        return await interaction.reply(`Not enough data points to make comparison`);
+                    dataPoints = activityData.slice(-1 * oppDataPoints.length);
+                }
+                else {
+                    labels = activityData.map(data => new Date(data.timestamp).toLocaleString());
+                    if(labels.length > 250)
+                        labels = labels.slice(-250);
+                    dataPoints = activityData.map(data => data.active).slice(-1 * labels.length);
+                    let index = -1;
+                    for(let i = oppActivityData.length - dataPoints.length; i >= 0; i--)
+                        if(Math.abs(oppActivityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                            index = i;
+                            break;
+                        }
+                    if(index = -1)
+                        return await interaction.reply(`Not enough data points to make comparison`);
+                    oppDataPoints = oppActivityData.slice(-1 * dataPoints.length);
+                }
+                data = {
+                    labels: labels,
+                    datasets: [
+                    {
+                        label: dataPoints[0].name,
+                        data: dataPoints,
+                        borderColor: "rgb(255, 0, 0)",
+                        fill: false
+                    },
+                    {
+                        label: oppDataPoints[0].name,
+                        data: oppDataPoints,
+                        borderColor: "rgb(0,0,255)",
+                        fill: false
+                    }]
+                }
+            }
+            else {
+                let adjustedActivityData = activityData;
+                if(adjustedActivityData.length > 250)
+                    adjustedActivityData = adjustedActivityData.slice(-250);
+                const data = {
+                    labels: adjustedActivityData.map(data => new Date(data.timestamp).toLocaleString()),
+                    datasets: [
+                    {
+                        label: adjustedActivityData[0].name,
+                        data: adjustedActivityData.map(data => data.active),
+                        borderColor: "rgb(255, 0, 0)",
+                        fill: false
+                    }]
+                }
             }
             chart.setConfig({
                 type: 'line',

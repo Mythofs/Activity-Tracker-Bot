@@ -1,0 +1,41 @@
+const { SlashCommandBuilder } = require('discord.js');
+const db = require("../../db.js");
+const safeFetch = require("../../safeFetch.js");
+
+module.exports = {
+    data: new SlashCommandBuilder().setName("tracking").setDescription("Starts tracking a faction's activity")
+        .addStringOption((option) => option.setName("id").setDescription("The faction to track").setRequired(false)),
+    async execute(interaction) {
+        await interaction.deferReply();
+        const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
+        try {
+            const facId = interaction.options.getString("id");
+            if(!facId) {
+                let str = "";
+                const [facs] = await db.execute("SELECT id, name FROM faction_activity");
+                const facNames = new Map(facs.map(fac => [fac.id, fac.name]));
+                const [monitoring] = await db.execute("SELECT id FROM monitor_store");
+                const monitorStore = monitoring.map(monitor => monitor.id);
+                for(const [id, name] of facNames) {
+                    const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [id]);
+                    str += `\n${name} (${id}), ${data.length} data points`;
+                    if(monitorStore.includes(id))
+                        str += ", currently being tracked";
+                }
+                if(str.length == 0)
+                    return await interaction.reply("No faction activity stored");
+                return await interaction.reply(str);
+            }
+            const [monitor] = await db.execute("SELECT * FROM monitor_store WHERE id = ?", [facId]);
+            if(monitor.length > 0) {
+                await db.execute("DELETE FROM monitor_store WHERE id = ?", [facId]);
+                return await interaction.editReply(`Stopped tracking ${facId}`);
+            }
+            else {
+                await db.execute("INSERT INTO monitor_store (id) VALUES (?)", [facId]);
+                return interaction.editReply(`Started tracking ${facId}`);
+            }
+        }
+        catch(e) { return interaction.editReply(`Error while starting tracking ${e}`); }
+    },
+}

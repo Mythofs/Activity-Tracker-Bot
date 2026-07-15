@@ -44,15 +44,6 @@ client.once("clientReady", async () => {
     await db.execute("CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
-    const [facs] = await db.execute("SELECT id, name FROM faction_activity");
-    for(const fac of facs) {
-        const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [fac.id]);
-        if(data.length < 245) {
-            await db.execute("DELETE FROM faction_activity WHERE id = ?", [fac.id]);
-            await db.execute("DELETE FROM individual_activity WHERE facid = ?", [fac.id]);
-            await db.execute("INSERT IGNORE INTO monitor_store (id) VALUES (?)", [fac.id]);
-        }
-    }
     monitorInterval(apiKey, channel);
     setInterval(async() => await monitorInterval(apiKey, channel), 600000);
 });
@@ -68,10 +59,6 @@ async function monitorInterval(apiKey, channel)
             const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
             checkActivity(apiKey, facId, channel, memberData);
             const [data] = await db.execute("SELECT name FROM faction_activity WHERE id = ?", [facId]);
-            if(data.length >= 245) {
-                await db.execute("DELETE FROM monitor_store WHERE id = ?", [facId]);
-                channel.send(`Completed activity tracking of ${data[0].name} (${facId})`);
-            }
         }
     }
     catch(e) {
