@@ -8,17 +8,18 @@ module.exports = {
         try {
             let str = "";
             const [facs] = await db.execute("SELECT id, name FROM faction_activity");
+            const facNames = new Map(facs.map(fac => [fac.id, fac.name]));
             const [monitoring] = await db.execute("SELECT id FROM monitor_store");
             const monitorStore = monitoring.map(monitor => monitor.id);
-            for(const fac of facs) {
-                const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [fac.id]);
-                str += `\n${fac.name} (${fac.id}), ${data.length} data points`;
-                if(monitorStore.includes(fac.id))
+            for(const [id, name] of facNames) {
+                const [data] = await db.execute("SELECT 1 FROM faction_activity WHERE id = ?", [id]);
+                str += `\n${name} (${id}), ${data.length} data points`;
+                if(monitorStore.includes(id))
                     str += ", currently being tracked";
             }
             if(str.length == 0)
-                return interaction.reply("No faction activity stored");
-            return interaction.reply(str);
+                return await interaction.reply("No faction activity stored");
+            return await interaction.reply(str);
         }
         catch(e) {
             channel.send(`Error while listing factions ${e}`);
