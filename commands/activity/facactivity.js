@@ -43,7 +43,6 @@ module.exports = {
                     labels = activityData.map(data => new Date(data.timestamp).toLocaleString());
                     dataPoints = activityData.map(data => data.numactive);
                     let index = -1;
-                    console.log(oppActivityData[0].timestamp + " " + activityData[0].timestamp);
                     for(let i = oppActivityData.length - activityData.length; i >= 0; i--)
                         if(Math.abs(oppActivityData[i].timestamp % 86400000 - activityData[0].timestamp % 86400000) < 300000) {
                             index = i;
@@ -80,11 +79,11 @@ module.exports = {
                     else if(activityData[i].numactive < oppActivityData[i].numactive)
                         oppcount++;
                 }
-                content = `${name}: ${(sum / activityData.length).toFixed(2)} average active members
-                    \n${oppname}: ${(oppsum / oppActivityData.length).toFixed(2)} average active members
-                    \n${name}: ahead ${(count / activityData.length * 100).toFixed(2)}% of the time
-                    \n${oppname}: ahead ${(oppcount / oppActivityData.length * 100).toFixed(2)}% of the time
-                    \nEqual activity ${((activityData.length - count - oppcount) / activityData.length * 100).toFixed(2)}% of the time`;
+                content = `${name}: ${(sum / dataPoints.length).toFixed(2)} average active members
+                    \n${oppname}: ${(oppsum / oppDataPoints.length).toFixed(2)} average active members
+                    \n${name}: ahead ${(count / dataPoints.length * 100).toFixed(2)}% of the time
+                    \n${oppname}: ahead ${(oppcount / oppDataPoints.length * 100).toFixed(2)}% of the time
+                    \nEqual activity ${((dataPoints.length - count - oppcount) / dataPoints.length * 100).toFixed(2)}% of the time`;
             }
             else {
                 if(activityData.length > 250)

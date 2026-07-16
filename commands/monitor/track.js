@@ -33,7 +33,7 @@ module.exports = {
             }
             else {
                 await db.execute("DELETE FROM faction_activity WHERE id = ?", [facId]);
-                await db.execute("DELETE FROM individual_activity WHERE fac_id = ?", [facId]);
+                await db.execute("DELETE FROM individual_activity WHERE facid = ?", [facId]);
                 await db.execute("INSERT INTO monitor_store (id) VALUES (?)", [facId]);
                 return interaction.editReply(`Started tracking ${facId}`);
             }
