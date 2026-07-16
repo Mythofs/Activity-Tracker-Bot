@@ -13,76 +13,96 @@ module.exports = {
             const oppid = interaction.options.getInteger("oppid");
             const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
             const chart = new QuickChart();
-            const [activityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [id]);
+            let [activityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
                 return await interaction.editReply(`No faction ${id} found`);
-            let data;
+            let data, content;
             if(oppid) {
-                const [oppActivityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [oppid]);
+                let [oppActivityData] = await db.execute("SELECT name, timestamp, numactive FROM faction_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
-                    return await interaciton.editReply(`No faction ${oppid} found`);
+                    return await interaction.editReply(`No faction ${oppid} found`);
                 let labels, dataPoints, oppDataPoints;
-                if(activityData.length > oppActivityData) {
+                if(activityData.length > oppActivityData.length) {
+                    if(oppActivityData.length > 250)
+                        oppActivityData = oppActivityData.slice(-250);
                     labels = oppActivityData.map(data => new Date(data.timestamp).toLocaleString());
-                    if(labels.length > 250)
-                        labels = labels.slice(-250);
-                    oppDataPoints = oppActivityData.map(data => data.numactive).slice(-1 * labels.length);
+                    oppDataPoints = oppActivityData.map(data => data.numactive);
                     let index = -1;
                     for(let i = activityData.length - oppDataPoints.length; i >= 0; i--)
-                        if(Math.abs(activityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                        if(Math.abs(activityData[i].timestamp % 86400000 - oppActivityData[0] % 86400000) < 300000) {
                             index = i;
                             break;
                         }
-                    if(index = -1)
-                        return await interaction.reply(`Not enough data points to make comparison`);
-                    dataPoints = activityData.slice(-1 * oppDataPoints.length);
+                    if(index == -1)
+                        return await interaction.editReply(`Not enough data points to make comparison`);
+                    dataPoints = activityData.map(data => data.numactive).slice(index, index + oppActivityData.length);
                 }
                 else {
+                    if(activityData.length > 250)
+                        activityData = oppActivityData.slice(-250);
                     labels = activityData.map(data => new Date(data.timestamp).toLocaleString());
-                    if(labels.length > 250)
-                        labels = labels.slice(-250);
-                    dataPoints = activityData.map(data => data.numactive).slice(-1 * labels.length);
+                    dataPoints = activityData.map(data => data.numactive);
                     let index = -1;
-                    for(let i = oppActivityData.length - dataPoints.length; i >= 0; i--)
-                        if(Math.abs(oppActivityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                    console.log(oppActivityData[0].timestamp + " " + activityData[0].timestamp);
+                    for(let i = oppActivityData.length - activityData.length; i >= 0; i--)
+                        if(Math.abs(oppActivityData[i].timestamp % 86400000 - activityData[0].timestamp % 86400000) < 300000) {
                             index = i;
                             break;
                         }
-                    if(index = -1)
-                        return await interaction.reply(`Not enough data points to make comparison`);
-                    oppDataPoints = oppActivityData.slice(-1 * dataPoints.length);
+                    if(index == -1)
+                        return await interaction.editReply(`Not enough data points to make comparison`);
+                    oppDataPoints = oppActivityData.map(data => data.numactive).slice(index, index + activityData.length);
                 }
+                const name = activityData[0].name;
+                const oppname = oppActivityData[0].name;
                 data = {
                     labels: labels,
                     datasets: [
                     {
-                        label: dataPoints[0].name,
+                        label: name,
                         data: dataPoints,
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     },
                     {
-                        label: oppDataPoints[0].name,
+                        label: oppname,
                         data: oppDataPoints,
                         borderColor: "rgb(0,0,255)",
                         fill: false
                     }]
                 }
+                let sum = 0, oppsum = 0, count = 0, oppcount = 0;
+                for(const i in activityData) {
+                    sum += activityData[i].numactive;
+                    oppsum += oppActivityData[i].numactive;
+                    if(activityData[i].numactive > oppActivityData[i].numactive)
+                        count++;
+                    else if(activityData[i].numactive < oppActivityData[i].numactive)
+                        oppcount++;
+                }
+                content = `${name}: ${(sum / activityData.length).toFixed(2)} average active members
+                    \n${oppname}: ${(oppsum / oppActivityData.length).toFixed(2)} average active members
+                    \n${name}: ahead ${(count / activityData.length * 100).toFixed(2)}% of the time
+                    \n${oppname}: ahead ${(oppcount / oppActivityData.length * 100).toFixed(2)}% of the time
+                    \nEqual activity ${((activityData.length - count - oppcount) / activityData.length * 100).toFixed(2)}% of the time`;
             }
             else {
-                let adjustedActivityData = activityData;
-                if(adjustedActivityData.length > 250)
-                    adjustedActivityData = adjustedActivityData.slice(-250);
-                const data = {
-                    labels: adjustedActivityData.map(data => new Date(data.timestamp).toLocaleString()),
+                if(activityData.length > 250)
+                    activityData = activityData.slice(-250);
+                data = {
+                    labels: activityData.map(data => new Date(data.timestamp).toLocaleString()),
                     datasets: [
                     {
-                        label: adjustedActivityData[0].name,
-                        data: adjustedActivityData.map(data => data.numactive),
+                        label: activityData[0].name,
+                        data: activityData.map(data => data.numactive),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     }]
                 }
+                let sum = 0;
+                for(const data of activityData)
+                    sum += data.numactive;
+                content = `${activityData[0].name}: ${(sum / activityData.length).toFixed(2)} average active memebers`;
             }
             chart.setConfig({
                 type: 'line',
@@ -101,7 +121,7 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const buffer = await chart.toBinary();
-            return interaction.editReply({files: [{attachment: buffer, name: "activityGraph.png"}]});
+            return interaction.editReply({content: content, files: [{attachment: buffer, name: "activityGraph.png"}]});
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);

@@ -3,7 +3,7 @@ const db = require("../../db.js");
 const safeFetch = require("../../safeFetch.js");
 
 module.exports = {
-    data: new SlashCommandBuilder().setName("tracking").setDescription("Starts tracking a faction's activity")
+    data: new SlashCommandBuilder().setName("track").setDescription("Starts tracking a faction's activity")
         .addStringOption((option) => option.setName("id").setDescription("The faction to track").setRequired(false)),
     async execute(interaction) {
         await interaction.deferReply();
@@ -23,8 +23,8 @@ module.exports = {
                         str += ", currently being tracked";
                 }
                 if(str.length == 0)
-                    return await interaction.reply("No faction activity stored");
-                return await interaction.reply(str);
+                    return await interaction.editReply("No faction activity stored");
+                return await interaction.editReply(str);
             }
             const [monitor] = await db.execute("SELECT * FROM monitor_store WHERE id = ?", [facId]);
             if(monitor.length > 0) {
@@ -32,6 +32,8 @@ module.exports = {
                 return await interaction.editReply(`Stopped tracking ${facId}`);
             }
             else {
+                await db.execute("DELETE FROM faction_activity WHERE id = ?", [facId]);
+                await db.execute("DELETE FROM individual_activity WHERE fac_id = ?", [facId]);
                 await db.execute("INSERT INTO monitor_store (id) VALUES (?)", [facId]);
                 return interaction.editReply(`Started tracking ${facId}`);
             }

@@ -12,45 +12,45 @@ module.exports = {
         try {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
-            const [activityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
+            let [activityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
                 return await interaction.editReply(`No player ${id} found`);
             const chart = new QuickChart();
             let data;
             if(oppid) {
-                const [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
+                let [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
                     return await interaction.editReply(`No player ${oppid} found`);
                 let labels, dataPoints, oppDataPoints;
-                if(activityData.length > oppActivityData) {
+                if(activityData.length > oppActivityData.length) {
+                    if(oppActivityData.length > 250)
+                        oppActivityData = oppActivityData.slice(-250);
                     labels = oppActivityData.map(data => new Date(data.timestamp).toLocaleString());
-                    if(labels.length > 250)
-                        labels = labels.slice(-250);
-                    oppDataPoints = oppActivityData.map(data => data.active).slice(-1 * labels.length);
+                    oppDataPoints = oppActivityData.map(data => data.active);
                     let index = -1;
                     for(let i = activityData.length - oppDataPoints.length; i >= 0; i--)
-                        if(Math.abs(activityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                        if(Math.abs(activityData[i].timestamp % 86400 - oppActivityData[0] % 86400) < 300) {
                             index = i;
                             break;
                         }
-                    if(index = -1)
-                        return await interaction.reply(`Not enough data points to make comparison`);
-                    dataPoints = activityData.slice(-1 * oppDataPoints.length);
+                    if(index == -1)
+                        return await interaction.editReply(`Not enough data points to make comparison`);
+                    dataPoints = activityData.map(data => data.active).slice(index, index + oppActivityData.length);
                 }
                 else {
+                    if(activityData.length > 250)
+                        activityData = oppActivityData.slice(-250);
                     labels = activityData.map(data => new Date(data.timestamp).toLocaleString());
-                    if(labels.length > 250)
-                        labels = labels.slice(-250);
                     dataPoints = activityData.map(data => data.active).slice(-1 * labels.length);
                     let index = -1;
                     for(let i = oppActivityData.length - dataPoints.length; i >= 0; i--)
-                        if(Math.abs(oppActivityData[i].timestamp % 86400 - labels[0] % 86400) < 300) {
+                        if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
                             index = i;
                             break;
                         }
-                    if(index = -1)
-                        return await interaction.reply(`Not enough data points to make comparison`);
-                    oppDataPoints = oppActivityData.slice(-1 * dataPoints.length);
+                    if(index == -1)
+                        return await interaction.editReply(`Not enough data points to make comparison`);
+                    oppDataPoints = oppActivityData.map(data => data.active).slice(index, index + activityData.length);
                 }
                 data = {
                     labels: labels,
@@ -73,7 +73,7 @@ module.exports = {
                 let adjustedActivityData = activityData;
                 if(adjustedActivityData.length > 250)
                     adjustedActivityData = adjustedActivityData.slice(-250);
-                const data = {
+                data = {
                     labels: adjustedActivityData.map(data => new Date(data.timestamp).toLocaleString()),
                     datasets: [
                     {
