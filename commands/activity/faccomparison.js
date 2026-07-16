@@ -1,10 +1,11 @@
 const { SlashCommandBuilder } = require('discord.js');
-const QuickChart = require("quickchart-js");
+const Chart = require("chart.js/auto");
+const { createCanvas } = require("@napi-rs/canvas");
 const db = require("../../db.js");
 const safeFetch = require("../../safeFetch.js");
 
 module.exports = { 
-    data: new SlashCommandBuilder().setName('statcomparison').setDescription('Provides stat comparison for specified factions')
+    data: new SlashCommandBuilder().setName('faccomparison').setDescription('Provides stat comparison for specified factions')
         .addIntegerOption((option) => option.setName("id").setDescription("The faction id").setRequired(true))
         .addIntegerOption((option) => option.setName("oppid").setDescription("The faction id to compare")),
     async execute(interaction) {
@@ -42,36 +43,39 @@ module.exports = {
             ffscouterStats.forEach(stat => oppstatarray.push({"id": stat.player_id, "stats": stat.bs_estimate}));
             statarray.sort((a, b) => a.stats - b.stats);
             oppstatarray.sort((a, b) => a.stats - b.stats);
-            let labels;
-            if(statarray.length > oppstatarray.length)
-                labels = statarray.map((_, i) => i + 1);
-            else
-                labels = oppstatarray.map((_, i) => i + 1);
-            const chart = new QuickChart();
-            const data = {
-                labels: labels,
+            const statcanvas = createCanvas(800, 600);
+            const statctx = statcanvas.getContext("2d");
+            const statdata = {
                 datasets: [
                 {
                     label: stats.faction.name,
-                    data: statarray.map(data => data.stats),
+                    data: statarray.map((data, i) => ({"x": i + 1, "y": data.stats})),
                     borderColor: "rgb(255, 0, 0)",
                     fill: false
                 },
                 {
                     label: oppstats.faction.name,
-                    data: oppstatarray.map(data => data.stats),
+                    data: oppstatarray.map((data, i) => ({"x": i + 1, "y": data.stats})),
                     borderColor: "rgb(0, 0, 255)",
                     fill: false
                 }]
             };
-            chart.setConfig({
+            new Chart(ctx, {
                 type: 'line',
-                data: data,
+                data: statdata,
+                options: {
+                    scales: {
+                        x: {
+                            type: "linear",
+                            title: "Rank in faction"
+                        },
+                        y: {
+                            title: "Total battlestats"
+                        }
+                    }
+                }
             });
-            chart.setWidth(800);
-            chart.setHeight(600);
-            const buffer = await chart.toBinary();
-            return interaction.editReply({files: [{attachment: buffer, name: "statcomparison.png"}]});
+            return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}]});
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);

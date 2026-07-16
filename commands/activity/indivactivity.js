@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
-const QuickChart = require("quickchart-js");
+const Chart = require("chart.js/auto");
+const { createCanvas } = require("@napi-rs/canvas");
 const db = require("../../db.js");
 
 module.exports = { 
@@ -12,96 +13,73 @@ module.exports = {
         try {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
-            let [activityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
+            const [activityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
                 return await interaction.editReply(`No player ${id} found`);
-            const chart = new QuickChart();
-            let data;
+            let data, content;
             if(oppid) {
-                let [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
+                const [oppActivityData] = await db.execute("SELECT name, timestamp, active FROM faction_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
-                    return await interaction.editReply(`No player ${oppid} found`);
-                let labels, dataPoints, oppDataPoints;
-                if(activityData.length > oppActivityData.length) {
-                    if(oppActivityData.length > 250)
-                        oppActivityData = oppActivityData.slice(-250);
-                    labels = oppActivityData.map(data => new Date(data.timestamp).toLocaleString());
-                    oppDataPoints = oppActivityData.map(data => data.active);
-                    let index = -1;
-                    for(let i = activityData.length - oppDataPoints.length; i >= 0; i--)
-                        if(Math.abs(activityData[i].timestamp % 86400 - oppActivityData[0] % 86400) < 300) {
-                            index = i;
-                            break;
-                        }
-                    if(index == -1)
-                        return await interaction.editReply(`Not enough data points to make comparison`);
-                    dataPoints = activityData.map(data => data.active).slice(index, index + oppActivityData.length);
-                }
-                else {
-                    if(activityData.length > 250)
-                        activityData = oppActivityData.slice(-250);
-                    labels = activityData.map(data => new Date(data.timestamp).toLocaleString());
-                    dataPoints = activityData.map(data => data.active).slice(-1 * labels.length);
-                    let index = -1;
-                    for(let i = oppActivityData.length - dataPoints.length; i >= 0; i--)
-                        if(Math.abs(oppActivityData[i].timestamp % 86400 - activityData[0].timestamp % 86400) < 300) {
-                            index = i;
-                            break;
-                        }
-                    if(index == -1)
-                        return await interaction.editReply(`Not enough data points to make comparison`);
-                    oppDataPoints = oppActivityData.map(data => data.active).slice(index, index + activityData.length);
-                }
+                    return await interaction.editReply(`No faction ${oppid} found`);
+                const name = activityData[0].name;
+                const oppname = oppActivityData[0].name;
                 data = {
-                    labels: labels,
                     datasets: [
                     {
-                        label: dataPoints[0].name,
-                        data: dataPoints,
+                        label: name,
+                        data: activityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     },
                     {
-                        label: oppDataPoints[0].name,
-                        data: oppDataPoints,
+                        label: oppname,
+                        data: oppActivityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(0,0,255)",
                         fill: false
                     }]
                 }
+                let sum = 0;
+                activityData.forEach(data => sum += data.active);
+                let oppsum = 0;
+                oppActivityData.forEach(data => sum += data.active);
+                content = `${name} active ${(sum / activityData.length * 100).toFixed(2)}% of the time
+                    \n${oppname} active ${(oppsum / oppActivityData.length * 100).toFixed(2)}% of the time`;
             }
             else {
-                let adjustedActivityData = activityData;
-                if(adjustedActivityData.length > 250)
-                    adjustedActivityData = adjustedActivityData.slice(-250);
                 data = {
-                    labels: adjustedActivityData.map(data => new Date(data.timestamp).toLocaleString()),
                     datasets: [
                     {
-                        label: adjustedActivityData[0].name,
-                        data: adjustedActivityData.map(data => data.active),
+                        label: activityData[0].name,
+                        data: activityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     }]
                 }
+                let sum = 0;
+                activityData.forEach(data => sum += data.active);
+                content = `${name} active ${(sum / activityData.length * 100).toFixed(2)}% of the time`;
             }
-            chart.setConfig({
+            const canvas = createCanvas(800, 600);
+            const ctx = canvas.getContext("2d");
+            new Chart(ctx, {
                 type: 'line',
                 data: data,
                 options: {
                     scales: {
-                        yAxes: [{
-                          ticks: {
+                        x: {
+                            type: "time",
+                            title: "Time"
+                        },
+                        y: {
                             min: 0,
-                            max: 1
-                          }
-                        }]
+                            max: 1,
+                            title: "Active",
+                        }
                     }
                 }
             });
-            chart.setWidth(800);
-            chart.setHeight(600);
-            const buffer = await chart.toBinary();
-            return interaction.editReply({files: [{attachment: buffer, name: "activityGraph.png"}]});
+            const buffer = await canvas.toBinary();
+            return interaction.editReply({content: content, files: [{attachment: buffer, name: "activityGraph.png"}]});
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);
