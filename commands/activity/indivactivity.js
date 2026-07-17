@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const Chart = require("chart.js/auto");
-const { createCanvas } = require("@napi-rs/canvas");
+const QuickChart = require("quickchart-js");
 const db = require("../../db.js");
 
 module.exports = { 
@@ -59,26 +58,33 @@ module.exports = {
                 activityData.forEach(data => sum += data.active);
                 content = `${name} active ${(sum / activityData.length * 100).toFixed(2)}% of the time`;
             }
-            const canvas = createCanvas(800, 600);
-            const ctx = canvas.getContext("2d");
-            new Chart(ctx, {
+            const chart = new QuickChart();
+            chart.setConfig({
                 type: 'line',
                 data: data,
                 options: {
                     scales: {
                         x: {
                             type: "time",
-                            title: "Time"
+                            title: {
+                                display: true,
+                                text: "Time"
+                            }
                         },
                         y: {
                             min: 0,
                             max: 1,
-                            title: "Active",
+                            title: {
+                                display: true,
+                                text: "Active"
+                            }
                         }
                     }
                 }
             });
-            const buffer = await canvas.toBinary();
+            chart.setWidth(800);
+            chart.setHeight(600);
+            const buffer = await chart.toBinary();
             return interaction.editReply({content: content, files: [{attachment: buffer, name: "activityGraph.png"}]});
         }
         catch(e) {

@@ -10,8 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.2",
-    "chartjs-chart-matrix": "^3.0.5",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
     "mysql2": "^3.22.5",

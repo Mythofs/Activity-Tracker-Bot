@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const Chart = require("chart.js/auto");
-const { createCanvas } = require("@napi-rs/canvas");
+const QuickChart = require("quickchart-js");
 const db = require("../../db.js");
 const safeFetch = require("../../safeFetch.js");
 
@@ -39,12 +38,11 @@ module.exports = {
                 else
                     missingstats.push(data.id);
             }
-            const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
-            ffscouterStats.forEach(stat => oppstatarray.push({"id": stat.player_id, "stats": stat.bs_estimate}));
+            const oppffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
+            oppffscouterStats.forEach(stat => oppstatarray.push({"id": stat.player_id, "stats": stat.bs_estimate}));
             statarray.sort((a, b) => a.stats - b.stats);
             oppstatarray.sort((a, b) => a.stats - b.stats);
-            const statcanvas = createCanvas(800, 600);
-            const statctx = statcanvas.getContext("2d");
+            const chart = new QuickChart();
             const statdata = {
                 datasets: [
                 {
@@ -60,21 +58,30 @@ module.exports = {
                     fill: false
                 }]
             };
-            new Chart(ctx, {
+            chart.setConfig({
                 type: 'line',
                 data: statdata,
                 options: {
                     scales: {
                         x: {
                             type: "linear",
-                            title: "Rank in faction"
+                            title: {
+                                display: true,
+                                text: "Rank in faction"
+                            }
                         },
                         y: {
-                            title: "Total battlestats"
+                            title: {
+                                display: true,
+                                text: "Total battlestats"
+                            }
                         }
                     }
                 }
             });
+            chart.setWidth(800);
+            chart.setHeight(600);
+            const statgraph = await chart.toBinary();
             return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}]});
         }
         catch(e) {

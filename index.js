@@ -45,7 +45,7 @@ client.once("clientReady", async () => {
     await db.execute("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
     monitorInterval(apiKey, channel);
-    setInterval(async() => await monitorInterval(apiKey, channel), 900000);
+    setInterval(async() => await monitorInterval(apiKey, channel),  3600000);
 });
 client.login(process.env.TOKEN);
 
@@ -72,7 +72,7 @@ async function checkActivity(apiKey, facId, channel, memberData) {
         const memberData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${apiKey}`)
         let count = 0;
         for(const [id, member] of Object.entries(memberData.members)) {
-            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - member.last_action.timestamp * 1000 < 900000) {
+            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - member.last_action.timestamp * 1000 < 3600000) {
                 console.log(member.name);
                 await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [id, member.name, facId, Date.now(), 1]);
                 count++;
