@@ -41,8 +41,8 @@ for(const file of eventFiles) {
 client.once("clientReady", async () => {
     const apiKey = process.env.API_KEY;
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
-    await db.execute("CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
-    await db.execute("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
+    await db.execute("CREATE OR REPLACE TABLE faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
+    await db.execute("CREATE OR REPLACE TABLE individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
     await db.execute("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
     monitorInterval(apiKey, channel);
     setInterval(async() => await monitorInterval(apiKey, channel),  3600000);
@@ -56,8 +56,7 @@ async function monitorInterval(apiKey, channel)
         for(const row of rows)
         {
             const facId = row.id;
-            const memberData = await safeFetch(`https://api.torn.com/v2/faction/${facId}/members?striptags=true&comment=Activity%20Tracker%20Bot&key=${apiKey}`, channel);
-            checkActivity(apiKey, facId, channel, memberData);
+            checkActivity(apiKey, facId, channel);
         }
         await db.execute("DELETE FROM faction_activity WHERE timestamp < ?", [Date.now() - 604800000]);
         await db.execute("DELETE FROM individual_activity WHERE timestamp < ?", [Date.now() - 604800000]);
@@ -67,23 +66,23 @@ async function monitorInterval(apiKey, channel)
         console.log(`Error while checking activity ${e}`);
     }
 }
-async function checkActivity(apiKey, facId, channel, memberData) {
+async function checkActivity(apiKey, facId, channel) {
     try {    
-        const memberData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${apiKey}`)
+        const memberData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${apiKey}`, channel);
+        if(!memberData) return;
         let count = 0;
         for(const [id, member] of Object.entries(memberData.members)) {
             if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - member.last_action.timestamp * 1000 < 3600000) {
-                console.log(member.name);
                 await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [id, member.name, facId, Date.now(), 1]);
                 count++;
             }
             else
-                await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [member.id, member.name, facId, Date.now(), 0]);
+                await db.execute("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [id, member.name, facId, Date.now(), 0]);
         }
         await db.execute("REPLACE INTO faction_activity VALUES (?, ?, ?, ?)", [facId, memberData.name, Date.now(), count]);
     }
     catch(e) {
-        channel.send(`Error while checking activity ${e}`);
-        console.log(`Error while checking activity ${e}`);
+        channel.send(`Error while checking activity ${e.message}`);
+        console.log(`Error while checking activity ${e.message}`);
     }
 }

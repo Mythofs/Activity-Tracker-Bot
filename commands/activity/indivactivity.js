@@ -58,7 +58,7 @@ module.exports = {
                 activityData.forEach(data => sum += data.active);
                 content = `${name} active ${(sum / activityData.length * 100).toFixed(2)}% of the time`;
             }
-            const chart = new QuickChart();
+            const chart = new QuickChart().setVersion("3");
             chart.setConfig({
                 type: 'line',
                 data: data,

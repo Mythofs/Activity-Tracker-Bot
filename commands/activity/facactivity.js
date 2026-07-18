@@ -26,13 +26,13 @@ module.exports = {
                     datasets: [
                     {
                         label: name,
-                        data: activityData.map(data => ({"x": data.timestamp, "y": data.numactive})),
+                        data: activityData.map(data => ({"x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive})),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     },
                     {
                         label: oppname,
-                        data: oppActivityData.map(data => ({"x": data.timestamp, "y": data.numactive})),
+                        data: oppActivityData.map(data => ({"x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive})),
                         borderColor: "rgb(0,0,255)",
                         fill: false
                     }]
@@ -49,7 +49,7 @@ module.exports = {
                     datasets: [
                     {
                         label: activityData[0].name,
-                        data: activityData.map(data => ({"x": data.timestamp, "y": data.numactive})),
+                        data: activityData.map(data => ({"x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive})),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
                     }]
@@ -58,7 +58,7 @@ module.exports = {
                 activityData.forEach(data => sum += data.numactive);
                 content = `${activityData[0].name}: ${(sum / activityData.length).toFixed(2)} average active memebers`;
             }
-            const chart = new QuickChart();
+            const chart = new QuickChart().setVersion("3");
             chart.setConfig({
                 type: 'line',
                 data: data,
@@ -66,10 +66,15 @@ module.exports = {
                     scales: {
                         x: {
                             type: "time",
+                            time: {
+                                displayFormats: {
+                                    millisecond: "M/d HH:mm",
+                                }
+                            },
                             title: {
                                 display: true,
                                 text: "Time"
-                            }
+                            },
                         },
                         y: {
                             min: 0,
@@ -77,7 +82,7 @@ module.exports = {
                             title: {
                                 display: true,
                                 text: "Members active"
-                            }
+                            },
                         }
                     }
                 }

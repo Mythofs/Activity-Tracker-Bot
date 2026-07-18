@@ -1,63 +1,59 @@
 const { SlashCommandBuilder } = require('discord.js');
 const QuickChart = require("quickchart-js");
-const db = require("../../db.js");
 const safeFetch = require("../../safeFetch.js");
 
 module.exports = { 
     data: new SlashCommandBuilder().setName('faccomparison').setDescription('Provides stat comparison for specified factions')
         .addIntegerOption((option) => option.setName("id").setDescription("The faction id").setRequired(true))
-        .addIntegerOption((option) => option.setName("oppid").setDescription("The faction id to compare")),
+        .addIntegerOption((option) => option.setName("oppid").setDescription("The faction id to compare").setRequired(true)),
     async execute(interaction) {
         await interaction.deferReply();
         const channel = interaction.client.channels.cache.get(process.env.CHANNEL_ID);
         try {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid", true);
-            const activity = await db.execute("SELECT id, name, timestamp, active FROM individual_activity WHERE facid = ?", [id]);
-            const oppactivity = await db.exeucte("SELECT id, name timestamp, active FROM individual_activity WHERE facid = ?", [oppid]);
             const stats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${id}`);
             const oppstats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppid}`);
             const statarray = [];
             const oppstatarray = [];
             const missingstats = [];
-            const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
-            for(const data of activity) {
-                const playerid = String(data.id);
-                if(playerid in stats.faction.members && "spy" in stats.faction.members[playerid] && Math.floor(Date.now() / 1000) - stats.faction.members[playerid].spy.timestamp < 604800)
-                    statarray.push({"id": data.id, "stats": stats.faction.members[playerid].spy.total});
+            for(const [id, member] of Object.entries(stats.faction.members)) {
+                if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
+                    statarray.push({"id": id, "stats": member.spy.total});
                 else
-                    missingstats.push(data.id);
+                    missingstats.push(id);
             }
             const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
             ffscouterStats.forEach(stat => statarray.push({"id": stat.player_id, "stats": stat.bs_estimate}));
             missingstats.length = 0;
-            for(const data of oppactivity) {
-                const playerid = String(data.id);
-                if(playerid in oppstats.faction.members && "spy" in oppstats.faction.members[playerid] && Math.floor(Date.now() / 1000) - oppstats.faction.members[playerid].spy.timestamp < 604800)
-                    oppstatarray.push({"id": data.id, "stats": oppstats.faction.members[playerid].spy.total});
+            for(const [id, member] of Object.entries(oppstats.faction.members)) {
+                if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
+                    oppstatarray.push({"id": id, "stats": member.spy.total});
                 else
-                    missingstats.push(data.id);
+                    missingstats.push(id);
             }
             const oppffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
             oppffscouterStats.forEach(stat => oppstatarray.push({"id": stat.player_id, "stats": stat.bs_estimate}));
-            statarray.sort((a, b) => a.stats - b.stats);
-            oppstatarray.sort((a, b) => a.stats - b.stats);
-            const chart = new QuickChart();
+            statarray.sort((a, b) => b.stats - a.stats);
+            oppstatarray.sort((a, b) => b.stats - a.stats);
             const statdata = {
                 datasets: [
                 {
                     label: stats.faction.name,
                     data: statarray.map((data, i) => ({"x": i + 1, "y": data.stats})),
                     borderColor: "rgb(255, 0, 0)",
-                    fill: false
+                    fill: false,
                 },
                 {
                     label: oppstats.faction.name,
                     data: oppstatarray.map((data, i) => ({"x": i + 1, "y": data.stats})),
                     borderColor: "rgb(0, 0, 255)",
-                    fill: false
+                    fill: false,
                 }]
             };
+            const chart = new QuickChart().setVersion("3");
+            const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
+            const maxlength = Math.max(statarray.length, oppstatarray.length);
             chart.setConfig({
                 type: 'line',
                 data: statdata,
@@ -65,15 +61,28 @@ module.exports = {
                     scales: {
                         x: {
                             type: "linear",
+                            min: 0.5,
+                            max: maxlength + 0.5,
                             title: {
                                 display: true,
                                 text: "Rank in faction"
-                            }
+                            },
                         },
                         y: {
+                            type: "logarithmic",
+                            min: Math.min(statarray[statarray.length - 1].stats, oppstatarray[oppstatarray.length - 1].stats) * 0.9,
+                            max: Math.max(statarray[0].stats, oppstatarray[0].stats) * 1.1,
                             title: {
                                 display: true,
                                 text: "Total battlestats"
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    const leading = value.toString().replaceAll("0", "");
+                                    if(leading == "1" || leading == "2" || leading == "5")
+                                        return value.toLocaleString();
+                                    return null;
+                                }
                             }
                         }
                     }
@@ -86,7 +95,7 @@ module.exports = {
         }
         catch(e) {
             console.log(`Error while sending activity graph ${e}`);
-            channel.send(`Error while sending activity graph ${e}`);
+            channel.send(e);
         }
     },
 };
