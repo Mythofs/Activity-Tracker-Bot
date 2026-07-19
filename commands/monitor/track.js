@@ -12,12 +12,12 @@ module.exports = {
             const facId = interaction.options.getString("id");
             if(!facId) {
                 let str = "";
-                const [facs] = await queryRetry("SELECT id, name FROM faction_activity");
+                const facs = await queryRetry("SELECT id, name FROM faction_activity");
                 const facNames = new Map(facs.map(fac => [fac.id, fac.name]));
-                const [monitoring] = await queryRetry("SELECT id FROM monitor_store");
+                const monitoring = await queryRetry("SELECT id FROM monitor_store");
                 const monitorStore = monitoring.map(monitor => monitor.id);
                 for(const [id, name] of facNames) {
-                    const [data] = await queryRetry("SELECT 1 FROM faction_activity WHERE id = ?", [id]);
+                    const data = await queryRetry("SELECT 1 FROM faction_activity WHERE id = ?", [id]);
                     str += `\n${name} (${id}), ${data.length} data points`;
                     if(monitorStore.includes(id))
                         str += ", currently being tracked";
@@ -26,7 +26,7 @@ module.exports = {
                     return await interaction.editReply("No faction activity stored");
                 return await interaction.editReply(str);
             }
-            const [monitor] = await queryRetry("SELECT * FROM monitor_store WHERE id = ?", [facId]);
+            const monitor = await queryRetry("SELECT * FROM monitor_store WHERE id = ?", [facId]);
             if(monitor.length > 0) {
                 await queryRetry("DELETE FROM monitor_store WHERE id = ?", [facId]);
                 return await interaction.editReply(`Stopped tracking ${facId}`);

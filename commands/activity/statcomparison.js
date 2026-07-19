@@ -20,7 +20,7 @@ module.exports = {
             const missingstats = [];
             for(const [id, member] of Object.entries(stats.faction.members)) {
                 if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
-                    statarray.push({"id": id, "stats": member.spy.total});
+                    statarray.push({"id": Number(id), "stats": member.spy.total});
                 else
                     missingstats.push(id);
             }
@@ -29,7 +29,7 @@ module.exports = {
             missingstats.length = 0;
             for(const [id, member] of Object.entries(oppstats.faction.members)) {
                 if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
-                    oppstatarray.push({"id": id, "stats": member.spy.total});
+                    oppstatarray.push({"id": Number(id), "stats": member.spy.total});
                 else
                     missingstats.push(id);
             }
@@ -91,7 +91,7 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const statgraph = await chart.toBinary();
-            const [activityData] = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [id, oppid]);
+            const activityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [id, oppid]);
             if(activityData.length === 0)
                 return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}]});
             const activityMap = new Map();
@@ -108,9 +108,10 @@ module.exports = {
             allstats.sort((a, b) => b.stats.stats - a.stats.stats);
             const percentiles = [];
             let i = 0;
+            const intervalSize = Math.ciel(allstats.length / 10)
             while(i < allstats.length) {
                 let slice;
-                if(allstats.length - i < allstats.length / 5) {
+                if(i + intervalSize * 2 > allstats.length) {
                     slice = allstats.slice(i);
                     i = allstats.length;
                 }
@@ -118,32 +119,35 @@ module.exports = {
                     slice = allstats.slice(i, i + allstats.length / 10);
                     i += allstats.length / 10;
                 }
-                let count = 0, activitySum = 0, length = 0, oppActivitySum = 0, oppLength = 0;
+                let count = 0, oppcount = 0, activitySum = 0, length = 0, oppActivitySum = 0, oppLength = 0;
                 for(const stat of slice) {
-                    const activity = activityMap.get(stat.id);
+                    const activity = activityMap.get(stat.stats.id);
                     if(!stat.opp) {
                         count++;
                         activitySum += activity.count;
                         length += activity.amount;
                     }
                     else {
+                        oppcount++;
                         oppActivitySum += activity.count;
                         oppLength += activity.amount;
                     }
                 }
-                percentiles.push({"count": count, "max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
+                percentiles.push({"count": count, "oppcount": oppcount, "max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
             }
             const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
             const data = {
                 labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
-                datasets = [{
+                datasets: [{
                     label: stats.faction.name,
                     data: percentiles.map(slice => slice.activity),
+                    customLabels: percentiles.map(slice => slice.count),
                     backgroundColor: "rgb(255, 0, 0)",
                 },
                 {
                     label: oppstats.faction.name,
                     data: percentiles.map(slice => slice.oppActivity),
+                    customLabels: percentiles.map(slice => slice.oppcount),
                     backgroundColor: "rgb(0, 0, 255)",
                 }]
             }
@@ -167,6 +171,15 @@ module.exports = {
                             min: 0,
                             max: 100,
                         }
+                    },
+                    plugins: {
+                        datalabels: {
+                            anchor: "end",
+                            align: "top",
+                            formatter: (value, context) => {
+                                return context.dataset.customLabels[context.dataIndex];
+                            }
+                        }
                     }
                 }
             });
@@ -176,7 +189,7 @@ module.exports = {
             return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}, {attachment: activityGraph, name: "activitygraph.png"}]});
         }
         catch(e) {
-            console.log(`Error while sending activity graph ${e}`);
+            console.log(e);
             channel.send(e);
         }
     },

@@ -12,12 +12,12 @@ module.exports = {
         try {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid");
-            const [activityData] = await queryRetry("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
+            const activityData = await queryRetry("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
                 return await interaction.editReply(`No player ${id} found`);
             let data, content;
             if(oppid) {
-                const [oppActivityData] = await queryRetry("SELECT name, timestamp, active FROM faction_activity WHERE id = ?", [oppid]);
+                const oppActivityData = await queryRetry("SELECT name, timestamp, active FROM faction_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
                     return await interaction.editReply(`No faction ${oppid} found`);
                 const name = activityData[0].name;

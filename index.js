@@ -52,18 +52,19 @@ client.login(process.env.TOKEN);
 async function monitorInterval(apiKey, channel)
 {
     try {
-        const [rows] = queryRetry("SELECT id FROM monitor_store");
+        const rows = await queryRetry("SELECT id FROM monitor_store");
         for(const row of rows)
         {
             const facId = row.id;
             checkActivity(apiKey, facId, channel);
+            console.log(`Activity checked for ${facId}`);
         }
         await queryRetry("DELETE FROM faction_activity WHERE timestamp < ?", [Date.now() - 604800000]);
         await queryRetry("DELETE FROM individual_activity WHERE timestamp < ?", [Date.now() - 604800000]);
     }
     catch(e) {
         channel.send(`Error while checking activity ${e}`);
-        console.log(`Error while checking activity ${e}`);
+        console.log(e);
     }
 }
 async function checkActivity(apiKey, facId, channel) {
@@ -83,6 +84,6 @@ async function checkActivity(apiKey, facId, channel) {
     }
     catch(e) {
         channel.send(`Error while checking activity ${e.message}`);
-        console.log(`Error while checking activity ${e.message}`);
+        console.log(e);
     }
 }
