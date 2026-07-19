@@ -32,6 +32,9 @@ module.exports = {
                 return await interaction.editReply(`Stopped tracking ${facId}`);
             }
             else {
+                const facData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${process.env.API_KEY}`, channel);
+                if("error" in facData)
+                    return interaction.editReply(`No faction ${facId} found`);
                 await queryRetry("DELETE FROM faction_activity WHERE id = ?", [facId]);
                 await queryRetry("DELETE FROM individual_activity WHERE facid = ?", [facId]);
                 await queryRetry("INSERT INTO monitor_store (id) VALUES (?)", [facId]);

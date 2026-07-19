@@ -14,7 +14,11 @@ module.exports = {
             const id = interaction.options.getInteger("id", true);
             const oppid = interaction.options.getInteger("oppid", true);
             const stats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${id}`);
+            if(!stats.status)
+                return interaction.editReply(`No faction ${id} found`);
             const oppstats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppid}`);
+            if(!oppstats.status)
+                return interaction.editReply(`No faction ${oppid} found`);
             const statarray = [];
             const oppstatarray = [];
             const missingstats = [];
@@ -91,9 +95,11 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const statgraph = await chart.toBinary();
-            const activityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [id, oppid]);
-            if(activityData.length === 0)
+            const myActivityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [id]);
+            const oppActivityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [oppid]);
+            if(myActivityData.length === 0 || oppActivityData.length === 0)
                 return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}]});
+            const activityData = [...myActivityData, ...oppActivityData];
             const activityMap = new Map();
             for(const data of activityData)
                 if(activityMap.has(data.id)) {
@@ -190,7 +196,7 @@ module.exports = {
         }
         catch(e) {
             console.log(e);
-            channel.send(e);
+            return interaction.editReply("Error:" + e);
         }
     },
 };
