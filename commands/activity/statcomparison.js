@@ -57,7 +57,7 @@ module.exports = {
                 }]
             };
             const chart = new QuickChart().setVersion("3");
-            const maxlength = Math.max(statarray.length, oppstatarray.length);
+            const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
             chart.setConfig({
                 type: 'line',
                 data: statdata,
@@ -66,7 +66,7 @@ module.exports = {
                         x: {
                             type: "linear",
                             min: 0.5,
-                            max: maxlength + 0.5,
+                            max: Math.max(statarray.length, oppstatarray.length) + 0.5,
                             title: {
                                 display: true,
                                 text: "Rank in faction"
@@ -84,7 +84,7 @@ module.exports = {
                                 callback: function(value) {
                                     const leading = value.toString().replaceAll("0", "");
                                     if(leading == "1" || leading == "2" || leading == "5")
-                                        return value.toLocaleString();
+                                        return formatter.format(value);
                                     return null;
                                 }
                             }
@@ -95,72 +95,47 @@ module.exports = {
             chart.setWidth(800);
             chart.setHeight(600);
             const statgraph = await chart.toBinary();
-            const myActivityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [id]);
-            const oppActivityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [oppid]);
-            if(myActivityData.length === 0 || oppActivityData.length === 0)
-                return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}]});
-            const activityData = [...myActivityData, ...oppActivityData];
-            const activityMap = new Map();
-            for(const data of activityData)
-                if(activityMap.has(data.id)) {
-                    activityMap.get(data.id).count += data.active;
-                    activityMap.get(data.id).amount++;
-                }
-                else
-                    activityMap.set(data.id, {"count": data.active, "amount": 1});
             const allstats = [];
             statarray.forEach(stat => allstats.push({"stats": stat, "opp": false}));
             oppstatarray.forEach(stat => allstats.push({"stats": stat, "opp": true}));
             allstats.sort((a, b) => b.stats.stats - a.stats.stats);
             const percentiles = [];
+            const intervalSize = allstats.length / 10;
             let i = 0;
-            const intervalSize = Math.ciel(allstats.length / 10)
             while(i < allstats.length) {
+                i += intervalSize;
                 let slice;
-                if(i + intervalSize * 2 > allstats.length) {
-                    slice = allstats.slice(i);
+                if(i + intervalSize >= allstats.length) {
+                    slice = allstats.length(i - intervalSize);
                     i = allstats.length;
                 }
-                else {
-                    slice = allstats.slice(i, i + allstats.length / 10);
-                    i += allstats.length / 10;
-                }
-                let count = 0, oppcount = 0, activitySum = 0, length = 0, oppActivitySum = 0, oppLength = 0;
-                for(const stat of slice) {
-                    const activity = activityMap.get(stat.stats.id);
-                    if(!stat.opp) {
+                else
+                    slice = allstats.slice(i - intervalSize, i);
+                let count = 0, oppcount = 0;
+                for(const stat of slice)
+                    if(!stat.opp)
                         count++;
-                        activitySum += activity.count;
-                        length += activity.amount;
-                    }
-                    else {
+                    else
                         oppcount++;
-                        oppActivitySum += activity.count;
-                        oppLength += activity.amount;
-                    }
-                }
-                percentiles.push({"count": count, "oppcount": oppcount, "max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
+                percentiles.push({"count": count, "oppcount": oppcount, "max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats});
             }
-            const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
-            const data = {
+            const distdata = {
                 labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
                 datasets: [{
                     label: stats.faction.name,
-                    data: percentiles.map(slice => slice.activity),
-                    customLabels: percentiles.map(slice => slice.count),
+                    data: percentiles.map(slice => slice.count),
                     backgroundColor: "rgb(255, 0, 0)",
                 },
                 {
                     label: oppstats.faction.name,
-                    data: percentiles.map(slice => slice.oppActivity),
-                    customLabels: percentiles.map(slice => slice.oppcount),
+                    data: percentiles.map(slice => slice.oppcount),
                     backgroundColor: "rgb(0, 0, 255)",
                 }]
             }
-            const barchart = new QuickChart().setVersion("3");
-            barchart.setConfig({
+            const distChart = new QuickChart().setVersion("3")
+            .setConfig({
                 type: "bar",
-                data: data,
+                data: distdata,
                 options: {
                     scales: {
                         x: {
@@ -172,27 +147,17 @@ module.exports = {
                         y: {
                             title: {
                                 display: true,
-                                text: "Average Activity"
+                                text: "Number of members"
                             },
                             min: 0,
                             max: 100,
                         }
-                    },
-                    plugins: {
-                        datalabels: {
-                            anchor: "end",
-                            align: "top",
-                            formatter: (value, context) => {
-                                return context.dataset.customLabels[context.dataIndex];
-                            }
-                        }
                     }
                 }
-            });
-            barchart.setWidth(800);
-            barchart.setHeight(600);
-            const activityGraph = await barchart.toBinary();
-            return interaction.editReply({files: [{attachment: statgraph, name: "statcomparison.png"}, {attachment: activityGraph, name: "activitygraph.png"}]});
+            })
+            .setWidth(800).setHeight(600);
+            const distGraph = await distChart.toBinary();
+            return interaction.editReply({ files: [{attachment: statgraph, name: "statcomparison.png"}, {attachment: distGraph, name: "statdistribution.png"}]});
         }
         catch(e) {
             console.log(e);

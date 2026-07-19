@@ -58,8 +58,8 @@ module.exports = {
                 activityData.forEach(data => sum += data.numactive);
                 content = `${activityData[0].name}: ${(sum / activityData.length).toFixed(2)} average active memebers`;
             }
-            const chart = new QuickChart().setVersion("3");
-            chart.setConfig({
+            const activityChart = new QuickChart().setVersion("3")
+            .setConfig({
                 type: 'line',
                 data: data,
                 options: {
@@ -86,14 +86,100 @@ module.exports = {
                         }
                     }
                 }
-            });
-            chart.setWidth(800);
-            chart.setHeight(600);
-            const buffer = await chart.toBinary();
-            return interaction.editReply({content: content, files: [{attachment: buffer, name: "activityGraph.png"}]});
+            })
+            .setWidth(800).setHeight(600);
+            const activityGraph = await activityChart.toBinary();
+            const stats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${id}`);
+            const oppstats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppid}`);
+            const allstats = [],  missingstats = [];
+            for(const [id, member] of Object.entries(stats.faction.members))
+                if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
+                    allstats.push({"id": Number(id), "stats": member.spy.total});
+                else
+                    missingstats.push(id);
+            for(const [id, member] of Object.entries(oppstats.faction.members))
+                if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
+                    allstats.push({"id": Number(id), "stats": member.spy.total});
+                else
+                    missingstats.push(id);
+            const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
+            ffscouterStats.forEach(stat => allstats.push({"id": stat.player_id, "stats": stat.bs_estimate}));
+            allstats.sort((a, b) => b.stats - a.stats);
+            const activityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [id, oppid]);
+            const activityMap = new Map();
+            for(const data of activityData)
+                if(activityMap.has(data.id)) {
+                    activityMap.get(data.id).count += data.active;
+                    activityMap.get(data.id).amount++;
+                }
+                else
+                    activityMap.set(data.id, {"count": data.active, "amount": 1});
+            const percentiles = [];
+            while(i < allstats.length) {
+                i += intervalSize;
+                let slice;
+                if(i + intervalSize >= allstats.length) {
+                    slice = allstats.length(i - intervalSize);
+                    i = allstats.length;
+                }
+                else
+                    slice = allstats.slice(i - intervalSize, i);
+                let activitySum = 0, length = 0, oppLength = 0;
+                for(const stat of slice) {
+                    const activity = activityMap.get(stat.stats.id);
+                    if(!stat.opp) {
+                        activitySum += activity.count;
+                        length += activity.amount;
+                    }
+                    else {
+                        oppActivitySum += activity.count;
+                        oppLength += activity.amount;
+                    }
+                }
+                percentiles.push({"max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
+            }
+            const distData = {
+                labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
+                datasets: [{
+                    label: stats.faction.name,
+                    data: percentiles.map(slice => slice.activity),
+                    backgroundColor: "rgb(255, 0, 0)",
+                },
+                {
+                    label: oppstats.faction.name,
+                    data: percentiles.map(slice => slice.oppActivity),
+                    backgroundColor: "rgb(0, 0, 255)",
+                }]
+            }
+            const distChart = new QuickChart().setVersion("3")
+            .setConfig({
+                type: "bar",
+                data: distData,
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: "Stat Percentiles"
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: "Average Activity"
+                            },
+                            min: 0,
+                            max: 100,
+                        }
+                    },
+                }
+            })
+            .setWidth(800).setHeight(600);
+            const distGraph = await distChart.toBinary();
+            return interaction.editReply({content: content, files: [{attachment: activityGraph, name: "activityGraph.png"}, {attachment: distGraph, name: "distGraph.png"}]});
         }
         catch(e) {
-            console.log(`Error while sending activity graph ${e}`);
+            console.log(e);
             channel.send(`Error while sending activity graph ${e}`);
         }
     },

@@ -15,12 +15,12 @@ module.exports = {
             const activityData = await queryRetry("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [id]);
             if(activityData.length == 0)
                 return await interaction.editReply(`No player ${id} found`);
+            const name = activityData[0].name;
             let data, content;
             if(oppid) {
                 const oppActivityData = await queryRetry("SELECT name, timestamp, active FROM faction_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
                     return await interaction.editReply(`No faction ${oppid} found`);
-                const name = activityData[0].name;
                 const oppname = oppActivityData[0].name;
                 data = {
                     datasets: [
@@ -48,7 +48,7 @@ module.exports = {
                 data = {
                     datasets: [
                     {
-                        label: activityData[0].name,
+                        label: name,
                         data: activityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(255, 0, 0)",
                         fill: false
