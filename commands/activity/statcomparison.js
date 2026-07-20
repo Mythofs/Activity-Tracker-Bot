@@ -84,7 +84,7 @@ module.exports = {
                                 callback: function(value) {
                                     const leading = value.toString().replaceAll("0", "");
                                     if(leading == "1" || leading == "2" || leading == "5")
-                                        return formatter.format(value);
+                                        return (new Intl.NumberFormat("en-US", {notation: "compact"})).format(value);
                                     return null;
                                 }
                             }
@@ -106,7 +106,7 @@ module.exports = {
                 i += intervalSize;
                 let slice;
                 if(i + intervalSize >= allstats.length) {
-                    slice = allstats.length(i - intervalSize);
+                    slice = allstats.slice(i - intervalSize);
                     i = allstats.length;
                 }
                 else

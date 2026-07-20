@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const QuickChart = require("quickchart-js");
 const queryRetry = require('../../queryRetry.js');
+const safeFetch = require("../../safeFetch.js");
 
 module.exports = { 
     data: new SlashCommandBuilder().setName('facactivity').setDescription('Provides activity for specified faction(s)')
@@ -89,8 +90,14 @@ module.exports = {
             })
             .setWidth(800).setHeight(600);
             const activityGraph = await activityChart.toBinary();
+            if(!oppid)
+                return interaction.editReply({content: content, files: [{attachment: activityGraph, name: "activityGraph.png"}]});
             const stats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${id}`);
+            if(stats == null || stats.status == false)
+                return interaction.editReply(`Error fetching tornstats for ${id}`);
             const oppstats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppid}`);
+            if(oppstats == null || stats.status == false)
+                return interaction.editReply(`Error fetching tornstats for ${oppid}`);
             const allstats = [],  missingstats = [];
             for(const [id, member] of Object.entries(stats.faction.members))
                 if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
@@ -105,29 +112,39 @@ module.exports = {
             const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingstats.join()}`);
             ffscouterStats.forEach(stat => allstats.push({"id": stat.player_id, "stats": stat.bs_estimate}));
             allstats.sort((a, b) => b.stats - a.stats);
-            const activityData = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [id, oppid]);
+            const indivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [id]);
+            const oppIndivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [oppid]);
             const activityMap = new Map();
-            for(const data of activityData)
+            for(const data of indivActivity)
                 if(activityMap.has(data.id)) {
                     activityMap.get(data.id).count += data.active;
                     activityMap.get(data.id).amount++;
                 }
                 else
-                    activityMap.set(data.id, {"count": data.active, "amount": 1});
+                    activityMap.set(data.id, {"count": data.active, "amount": 1, "opp": false});
+            for(const data of oppIndivActivity)
+                if(activityMap.has(data.id)) {
+                    activityMap.get(data.id).count += data.active;
+                    activityMap.get(data.id).amount++;
+                }
+                else
+                    activityMap.set(data.id, {"count": data.active, "amount": 1, "opp": true});
             const percentiles = [];
+            let i = 0;
+            const intervalSize = allstats.length / 10;
             while(i < allstats.length) {
                 i += intervalSize;
                 let slice;
                 if(i + intervalSize >= allstats.length) {
-                    slice = allstats.length(i - intervalSize);
+                    slice = allstats.slice(i - intervalSize);
                     i = allstats.length;
                 }
                 else
                     slice = allstats.slice(i - intervalSize, i);
-                let activitySum = 0, length = 0, oppLength = 0;
+                let activitySum = 0, oppActivitySum = 0, length = 0, oppLength = 0;
                 for(const stat of slice) {
-                    const activity = activityMap.get(stat.stats.id);
-                    if(!stat.opp) {
+                    const activity = activityMap.get(stat.id);
+                    if(!activity.opp) {
                         activitySum += activity.count;
                         length += activity.amount;
                     }
@@ -136,8 +153,9 @@ module.exports = {
                         oppLength += activity.amount;
                     }
                 }
-                percentiles.push({"max": slice[0].stats.stats, "min": slice[slice.length - 1].stats.stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
+                percentiles.push({"max": slice[0].stats, "min": slice[slice.length - 1].stats, "activity": activitySum / length * 100, "oppActivity": oppActivitySum / oppLength * 100});
             }
+            const formatter = new Intl.NumberFormat("en-US", {notation: "compact"});
             const distData = {
                 labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
                 datasets: [{
@@ -180,7 +198,7 @@ module.exports = {
         }
         catch(e) {
             console.log(e);
-            channel.send(`Error while sending activity graph ${e}`);
+            interaction.editReply(`Error while sending activity graph ${e}`);
         }
     },
 };

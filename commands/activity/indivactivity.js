@@ -18,7 +18,7 @@ module.exports = {
             const name = activityData[0].name;
             let data, content;
             if(oppid) {
-                const oppActivityData = await queryRetry("SELECT name, timestamp, active FROM faction_activity WHERE id = ?", [oppid]);
+                const oppActivityData = await queryRetry("SELECT name, timestamp, active FROM individual_activity WHERE id = ?", [oppid]);
                 if(oppActivityData.length == 0)
                     return await interaction.editReply(`No faction ${oppid} found`);
                 const oppname = oppActivityData[0].name;
@@ -40,7 +40,7 @@ module.exports = {
                 let sum = 0;
                 activityData.forEach(data => sum += data.active);
                 let oppsum = 0;
-                oppActivityData.forEach(data => sum += data.active);
+                oppActivityData.forEach(data => oppsum += data.active);
                 content = `${name} active ${(sum / activityData.length * 100).toFixed(2)}% of the time
                     \n${oppname} active ${(oppsum / oppActivityData.length * 100).toFixed(2)}% of the time`;
             }
