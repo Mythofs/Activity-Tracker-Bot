@@ -1,22 +1,18 @@
-async function safeFetch(url, channel) {
-    let response;
-    try {
-        response = await fetch(url);
-    } catch (error) {
-        channel.send(`Error while fetching ${url}, ${error}`);
-        return null;
+async function safeFetch(url) {
+    for(let i = 0; i < 5; i++) {
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            if(!response.ok) throw new Error("Invalid response");
+            return data;
+        }
+        catch(e) {
+            if(i < 4) {
+                await new Promise(r => setTimeout(r, 100 * (i + 1)));
+                continue;
+            }
+            throw e;
+        }
     }
-    let data;
-    try {
-        data = await response.json();
-    } catch(error) {
-        channel.send(`Invalid JSON from ${url}, ${error}`);
-        return null;
-    }
-    if (!response.ok) {
-        channel.send(`Error from ${url}: ${JSON.stringify(data)}`);
-        return null;
-    }
-    return data;
 }
 module.exports = safeFetch;
