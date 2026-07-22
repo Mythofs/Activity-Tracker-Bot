@@ -21,7 +21,7 @@ module.exports = {
             for(const [id, member] of Object.entries(myStats.faction.members))
                 if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
                     myStatArray.push({ "id": Number(id), "stats": member.spy.total, "opp": false });
-                else
+                else if(member.status.state !== "Fallen")
                     missingStats.push(id);
             const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
             ffscouterStats.forEach(stat => myStatArray.push({ "id": stat.player_id, "stats": stat.bs_estimate, "opp": false }));
@@ -30,12 +30,12 @@ module.exports = {
             let oppStats, oppStatArray = [];
             if(oppId) {
                 oppStats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppId}`);
-                if(!oppStats || !oppstats.status)
-                    return interaction.editReply(`No faction ${myId} found`);
+                if(!oppStats || !oppStats.status)
+                    return interaction.editReply(`No faction ${oppId} found`);
                 for(const [id, member] of Object.entries(oppStats.faction.members))
                     if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
                         oppStatArray.push({ "id": Number(id), "stats": member.spy.total, "opp": true });
-                    else
+                    else if(member.status.state !== "Fallen")
                         missingStats.push(id);
                 const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
                 ffscouterStats.forEach(stat => oppStatArray.push({ "id": stat.player_id, "stats": stat.bs_estimate, "opp": true }));
@@ -47,11 +47,13 @@ module.exports = {
             let oppFacActivity;
             if(oppId)
                 oppFacActivity = await queryRetry("SELECT * FROM faction_activity WHERE id = ?", [oppId]);
-            let indivActivity;
-            if(oppId)
-                indivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ? OR facid = ?", [myId, oppId]);
-            else
-                indivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [myId]);
+            const myIndivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [myId]);
+            let indivActivity = myIndivActivity;
+            let oppIndivActivity = [];
+            if(oppId) {
+                oppIndivActivity = await queryRetry("SELECT * FROM individual_activity WHERE facid = ?", [oppId]);
+                indivActivity = indivActivity.concat(oppIndivActivity);
+            }
             const indivActivityMap = new Map();
             for(const data of indivActivity)
                 if(indivActivityMap.has(data.id)) {
@@ -64,11 +66,10 @@ module.exports = {
             const percentiles = [];
             const intervalSize = allStats.length / 10;
             let i = 0;
-            let myTotalActivitySum = 0, myTotalActivityCount = 0, oppTotalActivitySum = 0, oppTotalActivityCount;
             while(i < allStats.length) {
                 i += intervalSize;
                 let slice;
-                if(i + intervalSize >= allStats.length) {
+                if(i + intervalSize > allStats.length) {
                     slice = allStats.slice(i - intervalSize);
                     i = allStats.length;
                 }
@@ -99,37 +100,39 @@ module.exports = {
             let oppName = null;
             if(oppId)
                 oppName = oppStats.faction.name;
-            let myMembers = 0, myStatSum = 0;
-            myFacActivity.forEach(data => myMembers += data.numactive);
+            let myStatSum = 0;
             myStatArray.forEach(stat => myStatSum += stat.stats);
-            let myStatMedian = myStatArray[myStatArray.length / 2 + 1];
+            let myStatMedian = myStatArray[Math.floor(myStatArray.length / 2)].stats;
             if(myStatArray.length % 2 == 0)
-                myStatMedian = Math.round((myStatArray[myStatArray.length / 2] + myStatArray[myStatArray.length / 2 + 1]) / 2);
-            let content = `${myName}:\n${(myMembers / myFacActivity.length).toFixed(2)} average active members
-                \nAverage battlestats: ${Math.round(myStatSum / myStatArray.length).toLocaleString()}
-                \nMedian battlestats: ${myStatMedian.toLocaleString()}`;
+                myStatMedian = Math.round((myStatArray[Math.floor(myStatArray.length / 2) - 1].stats + myStatArray[Math.floor(myStatArray.length / 2)].stats) / 2);
+            let myInfo = `${myName}:\nAverage battlestats: ${Math.round(myStatSum / myStatArray.length).toLocaleString()}\nMedian battlestats: ${myStatMedian.toLocaleString()}`;
+            let oppInfo = "";
             if(oppId) {
-                let oppMembers = 0, oppStatSum = 0;
-                oppFacActivity.forEach(data => oppMembers += data.numactive);
+                let oppStatSum = 0;
                 oppStatArray.forEach(stat => oppStatSum += stat.stats);
-                let oppStatMedian = oppStatArray[oppStatArray.length / 2 + 1];
+                let oppStatMedian = oppStatArray[Math.floor(oppStatArray.length / 2)].stats;
                 if(oppStatArray.length % 2 == 0)
-                    oppStatMedian = Math.round((oppStatArray[oppStatArray.length / 2] + oppStatArray[oppStatArray.length / 2 + 1]) / 2);
-                content += `${oppName}:\n${(oppMembers / oppFacActivity.length).toFixed(2)} average active members
-                    \nAverage battlestats: ${Math.round(oppStatSum / oppStatArray.length).toLocaleString()}
-                    \nMedian battlestats: ${oppStatMedian.toLocaleString()}`;
+                    oppStatMedian = Math.round((oppStatArray[oppStatArray.length / 2 - 1].stats + oppStatArray[oppStatArray.length / 2].stats) / 2);
+                oppInfo = `${oppName}:\nAverage battlestats: ${Math.round(oppStatSum / oppStatArray.length).toLocaleString()}\nMedian battlestats: ${oppStatMedian.toLocaleString()}`;
             }
             const statLineGraph = await makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName);
-            const reply = {content: content, files: [{ attachment: statLineGraph, name: "statLineGraph.png" }]};
-            if(oppId) {
-                const statDistGraph = await makeStatDistGraph(percentiles, myName, oppName);
-                reply.files.push({ attachemnt: statDistGraph, name: "statDistGraph.png" });
-            }
-            if(indivActivityMap.size > 0) {
+            const reply = {files: [{ attachment: statLineGraph, name: "statLineGraph.png" }]};
+            const statDistGraph = await makeStatDistGraph(percentiles, myName, oppName, formatter);
+            reply.files.push({ attachment: statDistGraph, name: "statDistGraph.png" });
+            if(myIndivActivity.length > 0 && (!oppId || oppIndivActivity.length > 0)) {
                 const activityLineGraph = await makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName);
                 const activityDistGraph = await makeActivityDistGraph(percentiles, formatter, myName, oppName);
+                let myMembers = 0;
+                myFacActivity.forEach(data => myMembers += data.numactive);
+                myInfo += `\n${(myMembers / myFacActivity.length).toFixed(2)} average active members`;
+                if(oppId) {
+                    let oppMembers = 0;
+                    oppFacActivity.forEach(data => oppMembers += data.numactive);
+                    oppInfo += `\n${(oppMembers / oppFacActivity.length).toFixed(2)} average active members`;
+                }
                 reply.files.push({ attachment: activityLineGraph, name: "activityLineGraph.png" }, { attachment: activityDistGraph, name: "activityDistGraph.png" });
             }
+            reply.content = myInfo + "\n" + oppInfo;
             return interaction.editReply(reply);
         }
         catch(e) {
@@ -155,17 +158,17 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
         data.datasets.push({
             label: oppName,
             data: oppStatArray.map((data, i) => ({ "x": i + 1, "y": data.stats })),
-            borderColor: "rgb(255, 0, 0)",
+            borderColor: "rgb(0, 0, 255)",
             fill: false,
         });
         xMax = Math.max(myStatArray.length, oppStatArray.length) + 0.5;
-        yMin = Math.min(myStatArray[0].stats, oppStatArray[0].stats) * 0.9;
-        yMax = Math.max(myStatArray[myStatArray.length - 1].stats, oppStatArray[oppStatArray.length - 1].stats) * 1.1;
+        yMin = Math.min(myStatArray[myStatArray.length - 1].stats, oppStatArray[oppStatArray.length - 1].stats) * 0.9;
+        yMax = Math.max(myStatArray[0].stats, oppStatArray[0].stats) * 1.1;
     }
     else {
-        xMax = myStatArray.length;
-        yMin = myStatArray[0].stats * 0.9;
-        yMax = myStatArray[myStatArray.length - 1].stats * 1.1;
+        xMax = myStatArray.length + 0.5;
+        yMin = myStatArray[myStatArray.length - 1].stats * 0.9;
+        yMax = myStatArray[0].stats * 1.1;
     }
     const statLineChart = new QuickChart().setVersion("3")
     .setConfig({
@@ -204,23 +207,26 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
     }).setWidth(800).setHeight(600);
     return await statLineChart.toBinary();
 }
-async function makeStatDistGraph(percentiles, myName, oppName)
+async function makeStatDistGraph(percentiles, myName, oppName, formatter)
 {
+    const data = {
+        labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
+        datasets: [{
+            label: myName,
+            data: percentiles.map(slice => slice.myCount),
+            backgroundColor: "rgb(255, 0, 0)",
+        }]
+    };
+    if(oppName)
+        data.datasets.push({
+            label: oppName,
+            data: percentiles.map(slice => slice.oppCount),
+            backgroundColor: "rgb(0, 0, 255)"
+        });
     const statDistChart = new QuickChart().setVersion("3")
     .setConfig({
         type: "bar",
-        data: {
-            labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
-            datasets: [{
-                label: myName,
-                data: percentiles.map(slice => slice.myCount),
-                backgroundColor: "rgb(255, 0, 0)",
-            }, {
-                label: oppName,
-                data: percentiles.map(slice => slice.oppCount),
-                backgroundColor: "rgb(0, 0, 255)"
-            }]
-        },
+        data: data,
         options: {
             scales: {
                 x: {
@@ -237,12 +243,12 @@ async function makeStatDistGraph(percentiles, myName, oppName)
                     min: 0,
                     max: 100,
                 },
-                plugins: {
-                    datalabels: {
-                        anchor: "end",
-                        align: "top",
-                        formatter: (value) => value,
-                    }
+            },
+            plugins: {
+                datalabels: {
+                    anchor: "end",
+                    align: "top",
+                    formatter: (value) => value,
                 }
             }
         }
@@ -258,7 +264,7 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
             fill: false
         }]
     };
-    if(oppFacActivity.length > 0) {
+    if(oppFacActivity) {
         data.datasets.push({
             label: oppName,
             data: oppFacActivity.map(data => ({ "x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive })),
@@ -338,3 +344,4 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
     }).setWidth(800).setHeight(600);
     return await activityDistChart.toBinary();
 }
+
