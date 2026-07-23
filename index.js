@@ -73,7 +73,7 @@ async function checkActivity(apiKey, facId, channel) {
         if(!memberData) return;
         let count = 0;
         for(const [id, member] of Object.entries(memberData.members)) {
-            if(member.last_action.status == "Online" || member.last_action.status == "Idle" && Date.now() - member.last_action.timestamp * 1000 < 3600000) {
+            if(Date.now() - member.last_action.timestamp * 1000 < 3600000) {
                 await queryRetry("REPLACE INTO individual_activity VALUES (?, ?, ?, ?, ?)", [id, member.name, facId, Date.now(), 1]);
                 count++;
             }

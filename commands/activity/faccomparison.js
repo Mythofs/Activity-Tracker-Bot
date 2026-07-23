@@ -16,15 +16,22 @@ module.exports = {
             const myStats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${myId}`);
             if(!myStats || !myStats.status)
                 return interaction.editReply(`No faction ${myId} found`);
-            const myStatArray = [];
+            const myStatMap = new Map();
             const missingStats = [];
             for(const [id, member] of Object.entries(myStats.faction.members))
-                if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
-                    myStatArray.push({ "id": Number(id), "stats": member.spy.total, "opp": false });
-                else if(member.status.state !== "Fallen")
-                    missingStats.push(id);
-            const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
-            ffscouterStats.forEach(stat => myStatArray.push({ "id": stat.player_id, "stats": stat.bs_estimate, "opp": false }));
+                if(member.status.state !== "Fallen")
+                    if("spy" in member) {
+                        myStatMap.set(Number(id), member.spy.total);
+                        if(Math.floor(Date.now() / 1000) - member.spy.timestamp > 604800)
+                            missingStats.push(id);
+                    }
+                    else
+                        missingStats.push(id);
+            const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${[...missingStats].join()}`);
+            for(const stat of ffscouterStats)
+                if(!myStatMap.has(stat.player_id) || stat.bs_estimate > myStatMap.get(stat.player_id))
+                    myStatMap.set(stat.player_id, stat.bs_estimate);
+            const myStatArray = [...myStatMap].map(([key, value]) => ({"id": key, "stats": value, "opp": false}));
             myStatArray.sort((a, b) => b.stats - a.stats);
             missingStats.length = 0;
             let oppStats, oppStatArray = [];
@@ -32,13 +39,21 @@ module.exports = {
                 oppStats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppId}`);
                 if(!oppStats || !oppStats.status)
                     return interaction.editReply(`No faction ${oppId} found`);
+                const oppStatMap = new Map();
                 for(const [id, member] of Object.entries(oppStats.faction.members))
-                    if("spy" in member && Math.floor(Date.now() / 1000) - member.spy.timestamp < 604800)
-                        oppStatArray.push({ "id": Number(id), "stats": member.spy.total, "opp": true });
-                    else if(member.status.state !== "Fallen")
-                        missingStats.push(id);
+                    if(member.status.state !== "Fallen")
+                        if("spy" in member) {
+                            oppStatMap.set(Number(id), member.spy.total);
+                            if(Math.floor(Date.now() / 1000) - member.spy.timestamp > 604800)
+                                missingStats.push(id);
+                        }
+                        else
+                            missingStats.push(id);
                 const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
-                ffscouterStats.forEach(stat => oppStatArray.push({ "id": stat.player_id, "stats": stat.bs_estimate, "opp": true }));
+                for(const stat of ffscouterStats)
+                    if(!oppStatMap.has(stat.player_id) || stat.bs_estimate > oppStatMap.get(stat.player_id))
+                        oppStatMap.set(stat.player_id, stat.bs_estimate);
+                oppStatArray = [...oppStatMap].map(([key, value]) => ({"id": key, "stats": value, "opp": true}));
                 oppStatArray.sort((a, b) => b.stats - a.stats);
             }
             const allStats = [...myStatArray, ...oppStatArray];
@@ -202,6 +217,12 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
                         }
                     }
                 }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: "Stat Line Graph"
+                }
             }
         }
     }).setWidth(800).setHeight(600);
@@ -209,6 +230,14 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
 }
 async function makeStatDistGraph(percentiles, myName, oppName, formatter)
 {
+    let max = 0;
+    percentiles.forEach(slice => {
+        if(slice.myCount > max)
+            max = slice.myCount;
+        if(oppName && slice.oppCount > max)
+            max = slice.oppCount;
+    });
+    max = Math.ceil(max / 5 + 1) * 5;
     const data = {
         labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
         datasets: [{
@@ -240,8 +269,7 @@ async function makeStatDistGraph(percentiles, myName, oppName, formatter)
                         display: true,
                         text: "Number of members"
                     },
-                    min: 0,
-                    max: 100,
+                    max: max,
                 },
             },
             plugins: {
@@ -249,6 +277,10 @@ async function makeStatDistGraph(percentiles, myName, oppName, formatter)
                     anchor: "end",
                     align: "top",
                     formatter: (value) => value,
+                },
+                title: {
+                    display: true,
+                    text: "Stat Distribution Graph"
                 }
             }
         }
@@ -298,12 +330,26 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
                         text: "Members active"
                     }
                 }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: "Activity Line Graph"
+                }
             }
         }
     }).setWidth(800).setHeight(600);
     return await activityLineChart.toBinary();
 }
 async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
+    let max = 0;
+    percentiles.forEach(slice => {
+        if(slice.myActivity > max)
+            max = slice.myActivity;
+        if(oppName && slice.oppActivity > max)
+            max = slice.oppActivity;
+    });
+    max = Math.ceil(max / 10 + 1) * 10;
     const data = {
         labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
         datasets: [{
@@ -336,10 +382,25 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
                         display: true,
                         text: "Average Activity"
                     },
-                    min: 0,
-                    max: 100,
+                    max: max,
+                    ticks: {
+                        callback: function(value) {
+                            return value + "%";
+                        }
+                    }
                 }
             },
+            plugins: {
+                datalabels: {
+                    anchor: "end",
+                    align: "top",
+                    formatter: (value) => value.toFixed(1),
+                },
+                title: {
+                    display: true,
+                    text: "Activity Distribution Graph"
+                }
+            }
         }
     }).setWidth(800).setHeight(600);
     return await activityDistChart.toBinary();
