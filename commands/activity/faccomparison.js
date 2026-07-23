@@ -137,6 +137,7 @@ module.exports = {
             if(myIndivActivity.length > 0 && (!oppId || oppIndivActivity.length > 0)) {
                 const activityLineGraph = await makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName);
                 const activityDistGraph = await makeActivityDistGraph(percentiles, formatter, myName, oppName);
+                const activityHeatmap = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName);
                 let myMembers = 0;
                 myFacActivity.forEach(data => myMembers += data.numactive);
                 myInfo += `\n${(myMembers / myFacActivity.length).toFixed(2)} average active members`;
@@ -145,7 +146,7 @@ module.exports = {
                     oppFacActivity.forEach(data => oppMembers += data.numactive);
                     oppInfo += `\n${(oppMembers / oppFacActivity.length).toFixed(2)} average active members`;
                 }
-                reply.files.push({ attachment: activityLineGraph, name: "activityLineGraph.png" }, { attachment: activityDistGraph, name: "activityDistGraph.png" });
+                reply.files.push({ attachment: activityLineGraph, name: "activityLineGraph.png" }, { attachment: activityDistGraph, name: "activityDistGraph.png" }, {attachment: activityHeatmap, name: "activityHeatmap.png"});
             }
             reply.content = myInfo + "\n" + oppInfo;
             return interaction.editReply(reply);
@@ -405,4 +406,102 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
     }).setWidth(800).setHeight(600);
     return await activityDistChart.toBinary();
 }
-
+async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName)
+{
+    const myActivityPerDay = new Array(7).fill(new Array(24).fill(null));
+    let activityPerDay = new Array(7).fill(new Array(24).fill(null));
+    let max = 0, min = 0;
+    for(const data of myFacActivity) {
+        const date = new Date(data.timestamp);
+        const day = data.getDay();
+        let hour = date.getHours();
+        if(date.getMinutes() > 30)
+            hours++;
+        myActivityPerDay[day][hour] = data.numactive;
+        if(data.numactive > max)
+            max = data.numactive;
+        if(data.numactive < min)
+            min = data.numactive;
+    }
+    if(oppName) {
+        max = 0, min = 0;
+        const oppActivityPerDay = new Array(7).fill(new Array(24).fill(null));
+        for(const data of oppFacActivity) {
+            const date = new Date(data.timestamp);
+            const day = data.getDay();
+            let hour = date.getHours();
+            if(date.getMinutes() > 30)
+                hours++;
+            oppActivityPerDay[day][hour] = data.numactive;
+            if(activityPerDay[day][hour].numactive > max)
+                max = data.numactive;
+            if(activityPerDay[day][hour].numactive < min)
+                min = data.numactive;
+        }
+        for(let r = 0; r < 7; r++)
+            for(let c = 0; c < 24; c++)
+                if(oppActivityPerDay[r][c] && myActivityPerDay[r][c])
+                    activityPerDay[r][c] = myActivityPerDay[r][c] - oppActivityPerDay[r][c];
+    }
+    else
+        activityPerDay = myActivityPerDay;
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const data = {
+        labels: [...Array(24).keys()],
+        datasets: []
+    }
+    for(let i = 0; i < 7; i++)
+        data.datasets.push({
+            label: days[i],
+            data: Array(24).fill(1),
+            backgroundColor: generateColors(activityPerDay[i], min, max)
+        });
+    const activityHeatmapChart = new QuickChart().setVersion("3")
+    .setConfig({
+        type: "bar",
+        data: data,
+        options: {
+            scales: {
+                x: {
+                    stacked: true,
+                    title: {
+                        display: true,
+                        text: "Hour"
+                    }
+                },
+                y: {
+                    stacked: true,
+                    title: {
+                        display: true,
+                        text: "Day"
+                    }
+                }
+            },
+            plugins: {
+                datalabels: {
+                    formatter: (value) => value,
+                },
+                title: {
+                    display: true,
+                    text: "Activity Heatmap"
+                }
+            }
+        }
+    }).setWidth(800).setHeight(600);
+    return await activityHeatmapChart.toBinary();
+}
+async function generateColors(facActivity, min, max)
+{
+    const colors = new Array(24).fill("rgb(0, 0, 0)");
+    for(const i in facActivity) {
+        const data = facActivity[i];
+        if(!data) continue;
+        if(data.numactive > 0)
+            color[i] = `rgb(${255 * data.numactive / max})`;
+        else if(data.numactive < 0)
+            colors[i] = `rgb(0, 0, ${255 * data.numactive / min})`;
+        else
+            colors[i] = `rgb(0, 0, 0)`;
+    }
+    return colors;
+}
