@@ -408,15 +408,15 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
 }
 async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName)
 {
-    const myActivityPerDay = new Array(7).fill(new Array(24).fill(null));
-    let activityPerDay = new Array(7).fill(new Array(24).fill(null));
+    const myActivityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
+    let activityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
     let max = 0, min = 0;
     for(const data of myFacActivity) {
         const date = new Date(data.timestamp);
-        const day = data.getDay();
+        const day = date.getDay();
         let hour = date.getHours();
         if(date.getMinutes() > 30)
-            hours++;
+            hour++;
         myActivityPerDay[day][hour] = data.numactive;
         if(data.numactive > max)
             max = data.numactive;
@@ -424,27 +424,32 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
             min = data.numactive;
     }
     if(oppName) {
-        max = 0, min = 0;
-        const oppActivityPerDay = new Array(7).fill(new Array(24).fill(null));
+        const oppActivityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
         for(const data of oppFacActivity) {
             const date = new Date(data.timestamp);
-            const day = data.getDay();
+            const day = date.getDay();
             let hour = date.getHours();
             if(date.getMinutes() > 30)
-                hours++;
+                hour++;
             oppActivityPerDay[day][hour] = data.numactive;
-            if(activityPerDay[day][hour].numactive > max)
-                max = data.numactive;
-            if(activityPerDay[day][hour].numactive < min)
-                min = data.numactive;
         }
+        max = 0, min = 0;
         for(let r = 0; r < 7; r++)
             for(let c = 0; c < 24; c++)
-                if(oppActivityPerDay[r][c] && myActivityPerDay[r][c])
+                if(oppActivityPerDay[r][c] !== null && myActivityPerDay[r][c] !== null) {
                     activityPerDay[r][c] = myActivityPerDay[r][c] - oppActivityPerDay[r][c];
+                    if(activityPerDay[r][c] > max)
+                        max = activityPerDay[r][c];
+                    if(activityPerDay[r][c] < min)
+                        min = activityPerDay[r][c];
+                }
+        console.log(oppActivityPerDay);
     }
     else
         activityPerDay = myActivityPerDay;
+    console.log(max + " " + min);
+    console.log(myActivityPerDay);
+    console.log(activityPerDay);
     const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const data = {
         labels: [...Array(24).keys()],
@@ -452,9 +457,9 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
     }
     for(let i = 0; i < 7; i++)
         data.datasets.push({
-            label: days[i],
             data: Array(24).fill(1),
-            backgroundColor: generateColors(activityPerDay[i], min, max)
+            backgroundColor: await generateColors(activityPerDay[i], min, max),
+            dataLabels: activityPerDay[i],
         });
     const activityHeatmapChart = new QuickChart().setVersion("3")
     .setConfig({
@@ -467,24 +472,60 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     title: {
                         display: true,
                         text: "Hour"
-                    }
+                    },
+                    categoryPercentage: 1.0,
+                    barPercentage: 1.0,
                 },
                 y: {
                     stacked: true,
                     title: {
                         display: true,
                         text: "Day"
-                    }
+                    },
+                    ticks: {
+                        stepSize: 0.5,
+                        callback: function(value) {
+                            switch(value) {
+                                case 0.5: return "Sunday";
+                                case 1.5: return "Monday";
+                                case 2.5: return "Tuesday";
+                                case 3.5: return "Wednesday";
+                                case 4.5: return "Thursday";
+                                case 5.5: return "Friday";
+                                case 6.5: return "Saturday";
+                                default: return null;
+                            }
+
+                        }
+                    },
                 }
             },
             plugins: {
                 datalabels: {
-                    formatter: (value) => value,
+                    formatter: function(value, context) {
+                        return context.chart.data.datasets[context.datasetIndex].dataLabels[context.dataIndex];
+                    },
+                    color: "rgb(255, 255, 255)"
                 },
                 title: {
                     display: true,
                     text: "Activity Heatmap"
-                }
+                },
+                legend: {
+                    labels: { //need to stringify generateLabels like this to reference outside variables
+                        generateLabels: new Function('chart', `
+                            return [{
+                                text: ${JSON.stringify(myName)},
+                                fillStyle: "rgb(255, 0, 0)",
+                                lineWidth: 0,
+                            }, {
+                                text: ${JSON.stringify(oppName)},
+                                fillStyle: "rgb(0, 0, 255)",
+                                lineWidth: 0,
+                            }]
+                        `)
+                    }
+                },
             }
         }
     }).setWidth(800).setHeight(600);
@@ -492,16 +533,23 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
 }
 async function generateColors(facActivity, min, max)
 {
-    const colors = new Array(24).fill("rgb(0, 0, 0)");
-    for(const i in facActivity) {
-        const data = facActivity[i];
-        if(!data) continue;
-        if(data.numactive > 0)
-            color[i] = `rgb(${255 * data.numactive / max})`;
-        else if(data.numactive < 0)
-            colors[i] = `rgb(0, 0, ${255 * data.numactive / min})`;
-        else
-            colors[i] = `rgb(0, 0, 0)`;
+    try {
+        const colors = new Array(24).fill("rgb(255, 255, 255)");
+        for(const i in facActivity) {
+            const data = facActivity[i];
+            if(!data) continue;
+            if(data > 0)
+                colors[i] = `rgb(${Math.round(255 * data / max)}, 0, 0)`;
+            else if(data < 0)
+                colors[i] = `rgb(0, 0, ${Math.round(255 * data / min)})`;
+            else
+                colors[i] = `rgb(0, 0, 0)`;
+        }
+        console.log(colors);
+        return colors;
     }
-    return colors;
+    catch(e) {
+        console.log(e);
+        return [];
+    }
 }
