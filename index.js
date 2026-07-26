@@ -41,9 +41,20 @@ for(const file of eventFiles) {
 client.once("clientReady", async () => {
     const apiKey = process.env.API_KEY;
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
-    await queryRetry("CREATE OR REPLACE TABLE faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
-    await queryRetry("CREATE OR REPLACE TABLE individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
-    await queryRetry("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE)");
+    await queryRetry("CREATE TABLE IF NOT EXISTS faction_activity (id INTEGER, name VARCHAR(255), timestamp BIGINT, numactive INTEGER, PRIMARY KEY (id, timestamp))");
+    await queryRetry("CREATE TABLE IF NOT EXISTS individual_activity (id INTEGER, name VARCHAR(255), facid INTEGER, timestamp BIGINT, active INTEGER, PRIMARY KEY (id, timestamp))");
+    await queryRetry("CREATE TABLE IF NOT EXISTS monitor_store (id INTEGER UNIQUE, name VARCHAR(255))");
+    const rows = await queryRetry("SELECT id FROM monitor_store");
+    let waitTime = 0;
+    for(const row of rows) {
+        const fac = await queryRetry("SELECT timestamp FROM faction_activity WHERE id = ? ORDER BY timestamp DESC LIMIT 1", [row.id]);
+        if(fac.length > 0) {
+            waitTime = fac[0].timestamp + 3600000 * Math.ceil((Date.now() - fac[0].timestamp) / 3600000) - Date.now();
+            break;
+        }
+    }
+    if(waitTime !== 0)
+        await new Promise(r => setTimeout(r, waitTime));
     monitorInterval(apiKey, channel);
     setInterval(async() => await monitorInterval(apiKey, channel),  3600000);
 });

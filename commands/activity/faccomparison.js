@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { AsciiTable3 } = require("ascii-table3");
 const QuickChart = require("quickchart-js");
 const safeFetch = require("../../safeFetch.js");
 const queryRetry = require("../../queryRetry.js");
@@ -111,24 +112,34 @@ module.exports = {
                 percentiles.push({ "myCount": myCount, "oppCount": oppCount, "myActivity": myActivitySum / myActivityCount * 100, "oppActivity": oppActivitySum / oppActivityCount * 100, "max": slice[0].stats, "min": slice[slice.length - 1].stats });
             }
             const formatter = new Intl.NumberFormat("en-US", { notation: "compact" });
-            const myName = myStats.faction.name;
+            const myName = myStats.faction.name + " (" + myId + ")";
+            const table = new AsciiTable3("FACTION COMPARISON").setStyle("unicode-single").setHeading("STAT", myStats.faction.name.toUpperCase()).setAlignRight(2).setAlignRight(3);
             let oppName = null;
-            if(oppId)
-                oppName = oppStats.faction.name;
+            if(oppId) {
+                oppName = oppStats.faction.name + " (" + oppId + ")";
+                table.setHeading("STAT", myStats.faction.name.toUpperCase(), oppStats.faction.name.toUpperCase());
+            }
             let myStatSum = 0;
             myStatArray.forEach(stat => myStatSum += stat.stats);
             let myStatMedian = myStatArray[Math.floor(myStatArray.length / 2)].stats;
             if(myStatArray.length % 2 == 0)
                 myStatMedian = Math.round((myStatArray[Math.floor(myStatArray.length / 2) - 1].stats + myStatArray[Math.floor(myStatArray.length / 2)].stats) / 2);
-            let myInfo = `${myName}:\nAverage battlestats: ${Math.round(myStatSum / myStatArray.length).toLocaleString()}\nMedian battlestats: ${myStatMedian.toLocaleString()}`;
-            let oppInfo = "";
+            let rowMatrix = [
+                ["Id", myId],
+                ["Average bs", Math.round(myStatSum / myStatArray.length).toLocaleString()],
+                ["Median bs", myStatMedian.toLocaleString()],
+            ];
             if(oppId) {
                 let oppStatSum = 0;
                 oppStatArray.forEach(stat => oppStatSum += stat.stats);
                 let oppStatMedian = oppStatArray[Math.floor(oppStatArray.length / 2)].stats;
                 if(oppStatArray.length % 2 == 0)
                     oppStatMedian = Math.round((oppStatArray[oppStatArray.length / 2 - 1].stats + oppStatArray[oppStatArray.length / 2].stats) / 2);
-                oppInfo = `${oppName}:\nAverage battlestats: ${Math.round(oppStatSum / oppStatArray.length).toLocaleString()}\nMedian battlestats: ${oppStatMedian.toLocaleString()}`;
+                rowMatrix = [
+                    ["Id", myId, oppId],
+                    ["Average bs", Math.round(myStatSum / myStatArray.length).toLocaleString(), Math.round(oppStatSum / oppStatArray.length).toLocaleString()],
+                    ["Median bs", myStatMedian.toLocaleString(), oppStatMedian.toLocaleString()],
+                ];
             }
             const statLineGraph = await makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName);
             const reply = {files: [{ attachment: statLineGraph, name: "statLineGraph.png" }]};
@@ -140,15 +151,17 @@ module.exports = {
                 const activityHeatmap = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName);
                 let myMembers = 0;
                 myFacActivity.forEach(data => myMembers += data.numactive);
-                myInfo += `\n${(myMembers / myFacActivity.length).toFixed(2)} average active members`;
+                let activityMatrix = ["Average activity", (myMembers / myFacActivity.length).toFixed(2) + " members"];
                 if(oppId) {
                     let oppMembers = 0;
                     oppFacActivity.forEach(data => oppMembers += data.numactive);
-                    oppInfo += `\n${(oppMembers / oppFacActivity.length).toFixed(2)} average active members`;
+                    activityMatrix = ["Average activity", (myMembers / myFacActivity.length).toFixed(2) + " members", (oppMembers / oppFacActivity.length).toFixed(2) + " members"];
                 }
+                rowMatrix.push(activityMatrix);
                 reply.files.push({ attachment: activityLineGraph, name: "activityLineGraph.png" }, { attachment: activityDistGraph, name: "activityDistGraph.png" }, {attachment: activityHeatmap, name: "activityHeatmap.png"});
             }
-            reply.content = myInfo + "\n" + oppInfo;
+            table.addRowMatrix(rowMatrix);
+            reply.content = "```\n" + table.toString() + "\n```";
             return interaction.editReply(reply);
         }
         catch(e) {
@@ -336,6 +349,11 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
                 title: {
                     display: true,
                     text: "Activity Line Graph"
+                },
+                legend: {
+                    labels: {
+                        lineWidth: 0,
+                    }
                 }
             }
         }
@@ -413,10 +431,16 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
     let max = 0, min = 0;
     for(const data of myFacActivity) {
         const date = new Date(data.timestamp);
-        const day = date.getDay();
+        let day = date.getDay();
         let hour = date.getHours();
         if(date.getMinutes() > 30)
             hour++;
+        if(hour > 23) {
+            day++;
+            if(day > 6)
+                day = 0;
+            hour = 0;
+        }
         myActivityPerDay[day][hour] = data.numactive;
         if(data.numactive > max)
             max = data.numactive;
@@ -427,10 +451,16 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
         const oppActivityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
         for(const data of oppFacActivity) {
             const date = new Date(data.timestamp);
-            const day = date.getDay();
+            let day = date.getDay();
             let hour = date.getHours();
             if(date.getMinutes() > 30)
                 hour++;
+            if(hour > 23) {
+                day++;
+                if(day > 6)
+                    day = 0;
+                hour = 0;
+            }
             oppActivityPerDay[day][hour] = data.numactive;
         }
         max = 0, min = 0;
@@ -443,13 +473,9 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     if(activityPerDay[r][c] < min)
                         min = activityPerDay[r][c];
                 }
-        console.log(oppActivityPerDay);
     }
     else
         activityPerDay = myActivityPerDay;
-    console.log(max + " " + min);
-    console.log(myActivityPerDay);
-    console.log(activityPerDay);
     const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const data = {
         labels: [...Array(24).keys()],
@@ -545,7 +571,6 @@ async function generateColors(facActivity, min, max)
             else
                 colors[i] = `rgb(0, 0, 0)`;
         }
-        console.log(colors);
         return colors;
     }
     catch(e) {
