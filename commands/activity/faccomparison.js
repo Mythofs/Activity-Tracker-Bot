@@ -80,17 +80,13 @@ module.exports = {
                 else
                     indivActivityMap.set(data.id, { "sum": data.active, "count": 1 });
             const percentiles = [];
-            const intervalSize = allStats.length / 10;
-            let i = 0;
-            while(i < allStats.length) {
-                i += intervalSize;
+            const intervalSize = Math.floor(allStats.length / 10);
+            for(let i = 0; i < 10; i++) {
                 let slice;
-                if(i + intervalSize > allStats.length) {
-                    slice = allStats.slice(i - intervalSize);
-                    i = allStats.length;
-                }
+                if(i === 9)
+                    slice = allStats.slice(i * intervalSize);
                 else
-                    slice = allStats.slice(i - intervalSize, i);
+                    slice = allStats.slice(i * intervalSize, (i + 1) * intervalSize);
                 let myCount = 0, oppCount = 0, myActivitySum = 0, oppActivitySum = 0, myActivityCount = 0, oppActivityCount = 0;
                 for(const stat of slice) {
                     if(!stat.opp)
@@ -563,7 +559,7 @@ async function generateColors(facActivity, min, max)
         const colors = new Array(24).fill("rgb(255, 255, 255)");
         for(const i in facActivity) {
             const data = facActivity[i];
-            if(!data) continue;
+            if(data === null) continue;
             if(data > 0)
                 colors[i] = `rgb(${Math.round(255 * data / max)}, 0, 0)`;
             else if(data < 0)
