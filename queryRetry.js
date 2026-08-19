@@ -5,7 +5,9 @@ const db = mysql.createPool({
     user: process.env.DIRECTOR_DATABASE_USERNAME,
     password: process.env.DIRECTOR_DATABASE_PASSWORD,
     database: process.env.DIRECTOR_DATABASE_NAME,
-    enableKeepAlive: true
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
+    idleTimeout: 30000,
 })
 async function queryRetry(query, args = [])
 {
@@ -16,7 +18,7 @@ async function queryRetry(query, args = [])
         }
         catch(e) {
             if(i < 4) {
-                await new Promise(r => setTimeout(r, 100 * (i + 1)));
+                await new Promise(r => setTimeout(r, 500 * 2**i));
                 continue;
             }
             throw e;

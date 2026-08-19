@@ -14,48 +14,18 @@ module.exports = {
         try {
             const myId = interaction.options.getInteger("id", true);
             const oppId = interaction.options.getInteger("oppid");
-            const myStats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${myId}`);
-            if(!myStats || !myStats.status)
-                return interaction.editReply(`No faction ${myId} found`);
-            const myStatMap = new Map();
-            const missingStats = [];
-            for(const [id, member] of Object.entries(myStats.faction.members))
-                if(member.status.state !== "Fallen")
-                    if("spy" in member) {
-                        myStatMap.set(Number(id), member.spy.total);
-                        if(Math.floor(Date.now() / 1000) - member.spy.timestamp > 604800)
-                            missingStats.push(id);
-                    }
-                    else
-                        missingStats.push(id);
-            const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${[...missingStats].join()}`);
-            for(const stat of ffscouterStats)
-                if(!myStatMap.has(stat.player_id) || stat.bs_estimate > myStatMap.get(stat.player_id))
-                    myStatMap.set(stat.player_id, stat.bs_estimate);
-            const myStatArray = [...myStatMap].map(([key, value]) => ({"id": key, "stats": value, "opp": false}));
-            myStatArray.sort((a, b) => b.stats - a.stats);
-            missingStats.length = 0;
-            let oppStats, oppStatArray = [];
+            const myStats = await getStats(myId, false);
+            if(myStats === null)
+                return await interaction.editReply("Error fetching stats for " + myId);
+            const myStatArray = myStats[1];
+            const myName = myStats[0];
+            oppStatArray = [], oppName = null;
             if(oppId) {
-                oppStats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${oppId}`);
-                if(!oppStats || !oppStats.status)
-                    return interaction.editReply(`No faction ${oppId} found`);
-                const oppStatMap = new Map();
-                for(const [id, member] of Object.entries(oppStats.faction.members))
-                    if(member.status.state !== "Fallen")
-                        if("spy" in member) {
-                            oppStatMap.set(Number(id), member.spy.total);
-                            if(Math.floor(Date.now() / 1000) - member.spy.timestamp > 604800)
-                                missingStats.push(id);
-                        }
-                        else
-                            missingStats.push(id);
-                const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
-                for(const stat of ffscouterStats)
-                    if(!oppStatMap.has(stat.player_id) || stat.bs_estimate > oppStatMap.get(stat.player_id))
-                        oppStatMap.set(stat.player_id, stat.bs_estimate);
-                oppStatArray = [...oppStatMap].map(([key, value]) => ({"id": key, "stats": value, "opp": true}));
-                oppStatArray.sort((a, b) => b.stats - a.stats);
+                oppStats = await getStats(oppId, true);
+                if(oppStats === null)
+                    return await interaction.editReply("Error fetching stats for " + oppId);
+                oppStatArray = oppStats[1];
+                oppName = oppStats[0]
             }
             const allStats = [...myStatArray, ...oppStatArray];
             allStats.sort((a, b) => b.stats - a.stats);
@@ -108,13 +78,9 @@ module.exports = {
                 percentiles.push({ "myCount": myCount, "oppCount": oppCount, "myActivity": myActivitySum / myActivityCount * 100, "oppActivity": oppActivitySum / oppActivityCount * 100, "max": slice[0].stats, "min": slice[slice.length - 1].stats });
             }
             const formatter = new Intl.NumberFormat("en-US", { notation: "compact" });
-            const myName = myStats.faction.name + " (" + myId + ")";
-            const table = new AsciiTable3("FACTION COMPARISON").setStyle("unicode-single").setHeading("STAT", myStats.faction.name.toUpperCase()).setAlignRight(2).setAlignRight(3);
-            let oppName = null;
-            if(oppId) {
-                oppName = oppStats.faction.name + " (" + oppId + ")";
-                table.setHeading("STAT", myStats.faction.name.toUpperCase(), oppStats.faction.name.toUpperCase());
-            }
+            const table = new AsciiTable3("FACTION COMPARISON").setStyle("unicode-single").setHeading("STAT", myName.toUpperCase()).setAlignRight(2).setAlignRight(3);
+            if(oppId)
+                table.setHeading("STAT", myName.toUpperCase(), oppName.toUpperCase());
             let myStatSum = 0;
             myStatArray.forEach(stat => myStatSum += stat.stats);
             let myStatMedian = myStatArray[Math.floor(myStatArray.length / 2)].stats;
@@ -122,8 +88,8 @@ module.exports = {
                 myStatMedian = Math.round((myStatArray[Math.floor(myStatArray.length / 2) - 1].stats + myStatArray[Math.floor(myStatArray.length / 2)].stats) / 2);
             let rowMatrix = [
                 ["Id", myId],
-                ["Average bs", Math.round(myStatSum / myStatArray.length).toLocaleString()],
-                ["Median bs", myStatMedian.toLocaleString()],
+                ["Avg bs", `${Math.round(myStatSum / myStatArray.length).toLocaleString()} (${formatter.format(Math.round(myStatSum / myStatArray.length))})`],
+                ["Median bs", `${myStatMedian.toLocaleString()} (${formatter.format(myStatMedian)})`],
             ];
             if(oppId) {
                 let oppStatSum = 0;
@@ -133,8 +99,8 @@ module.exports = {
                     oppStatMedian = Math.round((oppStatArray[oppStatArray.length / 2 - 1].stats + oppStatArray[oppStatArray.length / 2].stats) / 2);
                 rowMatrix = [
                     ["Id", myId, oppId],
-                    ["Average bs", Math.round(myStatSum / myStatArray.length).toLocaleString(), Math.round(oppStatSum / oppStatArray.length).toLocaleString()],
-                    ["Median bs", myStatMedian.toLocaleString(), oppStatMedian.toLocaleString()],
+                    ["Avg bs", `${Math.round(myStatSum / myStatArray.length).toLocaleString()} (${formatter.format(Math.round(myStatSum / myStatArray.length))})`, `${Math.round(oppStatSum / oppStatArray.length).toLocaleString()} (${formatter.format(Math.round(oppStatSum / oppStatArray.length))})`],
+                    ["Median bs", `${myStatMedian.toLocaleString()} (${formatter.format(myStatMedian)})`, `${oppStatMedian.toLocaleString()} (${formatter.format(oppStatMedian)})`],
                 ];
             }
             const statLineGraph = await makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName);
@@ -144,16 +110,23 @@ module.exports = {
             if(myIndivActivity.length > 0 && (!oppId || oppIndivActivity.length > 0)) {
                 const activityLineGraph = await makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName);
                 const activityDistGraph = await makeActivityDistGraph(percentiles, formatter, myName, oppName);
-                const activityHeatmap = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName);
+                const heatmapData = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName);
+                const activityHeatmap = heatmapData.graph;
                 let myMembers = 0;
                 myFacActivity.forEach(data => myMembers += data.numactive);
-                let activityMatrix = ["Average activity", (myMembers / myFacActivity.length).toFixed(2) + " members"];
+                let activityMatrix = ["Avg activity", (myMembers / myFacActivity.length).toFixed(2) + " members"];
+                let percentMatrix = ["Percent ahead", (heatmapData.count[1] / heatmapData.count[0] * 100).toFixed(2) + "%"];
+                let countMatrix = ["Data points", myFacActivity.length + " points"];
                 if(oppId) {
                     let oppMembers = 0;
                     oppFacActivity.forEach(data => oppMembers += data.numactive);
-                    activityMatrix = ["Average activity", (myMembers / myFacActivity.length).toFixed(2) + " members", (oppMembers / oppFacActivity.length).toFixed(2) + " members"];
+                    activityMatrix = ["Avg activity", (myMembers / myFacActivity.length).toFixed(2) + " members", (oppMembers / oppFacActivity.length).toFixed(2) + " members"];
+                    percentMatrix = ["Percent ahead", (heatmapData.count[1] / heatmapData.count[0] * 100).toFixed(2) + "%", (heatmapData.count[2] / heatmapData.count[0] * 100).toFixed(2) + "%"];
+                    countMatrix = ["Data points", myFacActivity.length + " points", + oppFacActivity.length + " points"];
                 }
                 rowMatrix.push(activityMatrix);
+                rowMatrix.push(percentMatrix);
+                rowMatrix.push(countMatrix);
                 reply.files.push({ attachment: activityLineGraph, name: "activityLineGraph.png" }, { attachment: activityDistGraph, name: "activityDistGraph.png" }, {attachment: activityHeatmap, name: "activityHeatmap.png"});
             }
             table.addRowMatrix(rowMatrix);
@@ -166,7 +139,36 @@ module.exports = {
         }
     },
 };
-
+async function getStats(facId, opp)
+{
+    try {
+        const stats = await safeFetch(`https://www.tornstats.com/api/v2/${process.env.TORNSTATS_KEY}/spy/faction/${facId}`);
+        if(!stats || !stats.status)
+            return null;
+        const statMap = new Map();
+        const missingStats = [];
+        for(const [id, member] of Object.entries(stats.faction.members))
+            if(member.status.state !== "Fallen")
+                if("spy" in member) {
+                    statMap.set(Number(id), { "total": member.spy.total, "timestamp": member.spy.timestamp });
+                    if(Math.floor(Date.now() / 1000) - member.spy.timestamp > 604800)
+                        missingStats.push(id);
+                }
+                else
+                    missingStats.push(id);
+        const ffscouterStats = await safeFetch(`https://ffscouter.com/api/v1/get-stats?key=${process.env.FFSCOUTER_KEY}&targets=${missingStats.join()}`);
+        for(const stat of ffscouterStats)
+            if(!statMap.has(stat.player_id) || (stat.bs_estimate > statMap.get(stat.player_id).total && stat.last_updated > statMap.get(stat.player_id).timestamp))
+                statMap.set(stat.player_id, { "total": stat.bs_estimate });
+        const statArray = [...statMap].map(([key, value]) => ({"id": key, "stats": value.total, "opp": opp}));
+        statArray.sort((a, b) => b.stats - a.stats);
+        return [stats.faction.name, statArray];
+    }
+    catch(e) {
+        console.log(e);
+        return null;
+    }
+}
 async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName)
 {
     const data = {
@@ -175,6 +177,7 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
             label: myName,
             data: myStatArray.map((data, i) => ({ "x": i + 1, "y": data.stats })),
             borderColor: "rgb(255, 0, 0)",
+            backgroundColor: "rgb(255, 0, 0)",
             fill: false,
         }]
     }
@@ -184,6 +187,7 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
             label: oppName,
             data: oppStatArray.map((data, i) => ({ "x": i + 1, "y": data.stats })),
             borderColor: "rgb(0, 0, 255)",
+            backgroundColor: "rgb(0, 0, 255)",
             fill: false,
         });
         xMax = Math.max(myStatArray.length, oppStatArray.length) + 0.5;
@@ -302,7 +306,8 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
         datasets: [{
             label: myName,
             data: myFacActivity.map(data =>({ "x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive })),
-            borderColor: "rgb(255,0,0)",
+            borderColor: "rgb(255, 0, 0)",
+            backgroundColor: "rgb(255, 0, 0)",
             fill: false
         }]
     };
@@ -311,6 +316,7 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
             label: oppName,
             data: oppFacActivity.map(data => ({ "x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive })),
             borderColor: "rgb(0, 0, 255)",
+            backgroundColor: "rgb(0, 0, 255)",
             fill: false
         })
     }
@@ -346,11 +352,6 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
                     display: true,
                     text: "Activity Line Graph"
                 },
-                legend: {
-                    labels: {
-                        lineWidth: 0,
-                    }
-                }
             }
         }
     }).setWidth(800).setHeight(600);
@@ -477,12 +478,18 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
         labels: [...Array(24).keys()],
         datasets: []
     }
-    for(let i = 0; i < 7; i++)
+    let allCount = 0, myCount = 0, oppCount = 0;
+    for(let i = 0; i < 7; i++) {
+        const colorData = await generateColors(activityPerDay[i], min, max);
         data.datasets.push({
             data: Array(24).fill(1),
-            backgroundColor: await generateColors(activityPerDay[i], min, max),
+            backgroundColor: colorData.colors,
             dataLabels: activityPerDay[i],
         });
+        allCount += colorData.count[0];
+        myCount += colorData.count[1];
+        oppCount += colorData.count[2];
+    }
     const activityHeatmapChart = new QuickChart().setVersion("3")
     .setConfig({
         type: "bar",
@@ -551,23 +558,29 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
             }
         }
     }).setWidth(800).setHeight(600);
-    return await activityHeatmapChart.toBinary();
+    return { "graph": await activityHeatmapChart.toBinary(), "count": [allCount, myCount, oppCount] };
 }
 async function generateColors(facActivity, min, max)
 {
     try {
+        let allCount = 0, myCount = 0, oppCount = 0;
         const colors = new Array(24).fill("rgb(255, 255, 255)");
         for(const i in facActivity) {
             const data = facActivity[i];
             if(data === null) continue;
-            if(data > 0)
+            allCount++;
+            if(data > 0) {
                 colors[i] = `rgb(${Math.round(255 * data / max)}, 0, 0)`;
-            else if(data < 0)
+                myCount++;
+            }
+            else if(data < 0) {
                 colors[i] = `rgb(0, 0, ${Math.round(255 * data / min)})`;
+                oppCount++;
+            }
             else
                 colors[i] = `rgb(0, 0, 0)`;
         }
-        return colors;
+        return { "colors": colors, "count": [allCount, myCount, oppCount] };
     }
     catch(e) {
         console.log(e);

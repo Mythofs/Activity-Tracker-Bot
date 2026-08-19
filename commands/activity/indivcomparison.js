@@ -50,12 +50,14 @@ module.exports = {
                         label: name,
                         data: activityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(255, 0, 0)",
+                        backgroundColor: "rgb(255, 0, 0)",
                         fill: false
                     },
                     {
                         label: oppname,
                         data: oppActivityData.map(data => ({"x": data.timestamp, "y": data.active})),
-                        borderColor: "rgb(0,0,255)",
+                        borderColor: "rgb(0, 0, 255)",
+                        backgroundColor: "rgb(0, 0, 255)",
                         fill: false
                     }]
                 }
@@ -87,6 +89,7 @@ module.exports = {
                         label: name,
                         data: activityData.map(data => ({"x": data.timestamp, "y": data.active})),
                         borderColor: "rgb(255, 0, 0)",
+                        backgroundColor: "rgb(255, 0, 0)",
                         fill: false
                     }]
                 }
