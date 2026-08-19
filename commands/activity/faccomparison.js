@@ -568,8 +568,12 @@ async function generateColors(facActivity, min, max)
         for(const i in facActivity) {
             const data = facActivity[i];
             if(data === null) continue;
+<<<<<<< HEAD
             allCount++;
             if(data > 0) {
+=======
+            if(data > 0)
+>>>>>>> 8a47deb44efd7909c8b7595bfffaf5a16712eb4d
                 colors[i] = `rgb(${Math.round(255 * data / max)}, 0, 0)`;
                 myCount++;
             }
