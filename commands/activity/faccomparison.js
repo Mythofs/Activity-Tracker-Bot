@@ -88,6 +88,7 @@ module.exports = {
                 myStatMedian = Math.round((myStatArray[Math.floor(myStatArray.length / 2) - 1].stats + myStatArray[Math.floor(myStatArray.length / 2)].stats) / 2);
             let rowMatrix = [
                 ["Id", myId],
+                ["Members", myStatArray.length],
                 ["Avg bs", `${Math.round(myStatSum / myStatArray.length).toLocaleString()} (${formatter.format(Math.round(myStatSum / myStatArray.length))})`],
                 ["Median bs", `${myStatMedian.toLocaleString()} (${formatter.format(myStatMedian)})`],
             ];
@@ -99,18 +100,19 @@ module.exports = {
                     oppStatMedian = Math.round((oppStatArray[oppStatArray.length / 2 - 1].stats + oppStatArray[oppStatArray.length / 2].stats) / 2);
                 rowMatrix = [
                     ["Id", myId, oppId],
+                    ["Members", myStatArray.length, oppStatArray.length],
                     ["Avg bs", `${Math.round(myStatSum / myStatArray.length).toLocaleString()} (${formatter.format(Math.round(myStatSum / myStatArray.length))})`, `${Math.round(oppStatSum / oppStatArray.length).toLocaleString()} (${formatter.format(Math.round(oppStatSum / oppStatArray.length))})`],
                     ["Median bs", `${myStatMedian.toLocaleString()} (${formatter.format(myStatMedian)})`, `${oppStatMedian.toLocaleString()} (${formatter.format(oppStatMedian)})`],
                 ];
             }
-            const statLineGraph = await makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName);
+            const statLineGraph = await makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName, myId, oppId);
             const reply = {files: [{ attachment: statLineGraph, name: "statLineGraph.png" }]};
-            const statDistGraph = await makeStatDistGraph(percentiles, myName, oppName, formatter);
+            const statDistGraph = await makeStatDistGraph(percentiles, myName, oppName, myId, oppId, formatter);
             reply.files.push({ attachment: statDistGraph, name: "statDistGraph.png" });
             if(myIndivActivity.length > 0 && (!oppId || oppIndivActivity.length > 0)) {
-                const activityLineGraph = await makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName);
-                const activityDistGraph = await makeActivityDistGraph(percentiles, formatter, myName, oppName);
-                const heatmapData = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName);
+                const activityLineGraph = await makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName, myId, oppId);
+                const activityDistGraph = await makeActivityDistGraph(percentiles, formatter, myName, oppName, myId, oppId);
+                const heatmapData = await makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName, myId, oppId);
                 const activityHeatmap = heatmapData.graph;
                 let myMembers = 0;
                 myFacActivity.forEach(data => myMembers += data.numactive);
@@ -169,25 +171,25 @@ async function getStats(facId, opp)
         return null;
     }
 }
-async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName)
+async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, oppName, myId, oppId)
 {
     const data = {
         datasets: [
         {
-            label: myName,
+            label: myName + " (" + myId + ")",
             data: myStatArray.map((data, i) => ({ "x": i + 1, "y": data.stats })),
-            borderColor: "rgb(255, 0, 0)",
-            backgroundColor: "rgb(255, 0, 0)",
+            borderColor: "rgb(255, 100, 100)",
+            backgroundColor: "rgb(255, 100, 100)",
             fill: false,
         }]
     }
     let xMax, yMin, yMax;
     if(oppStatArray.length > 0) {
         data.datasets.push({
-            label: oppName,
+            label: oppName + " (" + oppId + ")",
             data: oppStatArray.map((data, i) => ({ "x": i + 1, "y": data.stats })),
-            borderColor: "rgb(0, 0, 255)",
-            backgroundColor: "rgb(0, 0, 255)",
+            borderColor: "rgb(100, 100, 255)",
+            backgroundColor: "rgb(100, 100, 255)",
             fill: false,
         });
         xMax = Math.max(myStatArray.length, oppStatArray.length) + 0.5;
@@ -211,7 +213,11 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
                     max: xMax,
                     title: {
                         display: true,
-                        text: "Rank in faction"
+                        text: "Rank in faction",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
                     },
                 },
                 y: {
@@ -220,7 +226,8 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
                     max: yMax,
                     title: {
                         display: true,
-                        text: "Total battlestats"
+                        text: "Total battlestats",
+                        color: "rgb(224, 224, 224)",
                     },
                     ticks: {
                         callback: function(value) {
@@ -228,21 +235,31 @@ async function makeStatLineGraph(myStatArray, oppStatArray, formatter, myName, o
                             if(leading == "1" || leading == "2" || leading == "5")
                                 return (new Intl.NumberFormat("en-US", {notation: "compact"})).format(value);
                             return null;
-                        }
+                        },
+                        color: "rgb(224, 224, 224)",
+                    },
+                    grid: {
+                        color: "rgb(63, 63, 63)",
                     }
                 }
             },
             plugins: {
                 title: {
                     display: true,
-                    text: "Stat Line Graph"
-                }
+                    text: "Stat Line Graph",
+                    color: "rgb(224, 224, 224)",
+                },
+                legend: {
+                    labels: {
+                        color: "rgb(224, 224, 224)",
+                    },
+                },
             }
         }
-    }).setWidth(800).setHeight(600);
+    }).setWidth(800).setHeight(600).setBackgroundColor("rgb(18, 18, 18)");
     return await statLineChart.toBinary();
 }
-async function makeStatDistGraph(percentiles, myName, oppName, formatter)
+async function makeStatDistGraph(percentiles, myName, oppName, myId, oppId, formatter)
 {
     let max = 0;
     percentiles.forEach(slice => {
@@ -255,16 +272,16 @@ async function makeStatDistGraph(percentiles, myName, oppName, formatter)
     const data = {
         labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
         datasets: [{
-            label: myName,
+            label: myName + " (" + myId + ")",
             data: percentiles.map(slice => slice.myCount),
-            backgroundColor: "rgb(255, 0, 0)",
+            backgroundColor: "rgb(255, 100, 100)",
         }]
     };
     if(oppName)
         data.datasets.push({
-            label: oppName,
+            label: oppName + " (" + oppId + ")",
             data: percentiles.map(slice => slice.oppCount),
-            backgroundColor: "rgb(0, 0, 255)"
+            backgroundColor: "rgb(100, 100, 255)"
         });
     const statDistChart = new QuickChart().setVersion("3")
     .setConfig({
@@ -275,15 +292,23 @@ async function makeStatDistGraph(percentiles, myName, oppName, formatter)
                 x: {
                     title: {
                         display: true,
-                        text: "Stat Percentiles"
+                        text: "Stat Percentiles",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
                     }
                 },
                 y: {
                     title: {
                         display: true,
-                        text: "Number of members"
+                        text: "Number of members",
+                        color: "rgb(224, 224, 224)",
                     },
                     max: max,
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
+                    },
                 },
             },
             plugins: {
@@ -291,32 +316,40 @@ async function makeStatDistGraph(percentiles, myName, oppName, formatter)
                     anchor: "end",
                     align: "top",
                     formatter: (value) => value,
+                    color: "rgb(224, 224, 224)",
                 },
                 title: {
                     display: true,
-                    text: "Stat Distribution Graph"
-                }
+                    text: "Stat Distribution Graph",
+                    color: "rgb(224, 224, 224)",
+                },
+                legend: {
+                    labels: {
+                        color: "rgb(224, 224, 224)",
+                    },
+                },
             }
         }
-    }).setWidth(800).setHeight(600);
+    }).setWidth(800).setHeight(600).setBackgroundColor("rgb(18, 18, 18)");
     return await statDistChart.toBinary();
 }
-async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName) {
+async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppName, myId, oppId) {
     const data = {
         datasets: [{
-            label: myName,
+            label: myName + " (" + myId + ")",
             data: myFacActivity.map(data =>({ "x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive })),
-            borderColor: "rgb(255, 0, 0)",
-            backgroundColor: "rgb(255, 0, 0)",
+            borderColor: "rgb(255, 100, 100)",
+            backgroundColor: "rgb(255, 100, 100)",
             fill: false
         }]
     };
     if(oppFacActivity) {
         data.datasets.push({
-            label: oppName,
+            label: oppName + " (" + oppId + ")",
             data: oppFacActivity.map(data => ({ "x": Math.floor(data.timestamp / 1000) * 1000, "y": data.numactive })),
-            borderColor: "rgb(0, 0, 255)",
-            backgroundColor: "rgb(0, 0, 255)",
+            borderColor: "rgb(100, 100, 255)",
+            backgroundColor: "rgb(100, 100, 255)",
+            color: "rgb(224, 224, 224)",
             fill: false
         })
     }
@@ -335,7 +368,11 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
                     },
                     title: {
                         display: true,
-                        text: "Time"
+                        text: "Time",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
                     }
                 },
                 y: {
@@ -343,21 +380,34 @@ async function makeActivityLineGraph(myFacActivity, oppFacActivity, myName, oppN
                     max: 100,
                     title: {
                         display: true,
-                        text: "Members active"
-                    }
+                        text: "Members active",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
+                    },
+                    grid: {
+                        color: "rgb(63, 63, 63)",
+                    },
                 }
             },
             plugins: {
                 title: {
                     display: true,
-                    text: "Activity Line Graph"
+                    text: "Activity Line Graph",
+                    color: "rgb(224, 224, 224)",
+                },
+                legend: {
+                    labels: {
+                        color: "rgb(224, 224, 224)",
+                    },
                 },
             }
         }
-    }).setWidth(800).setHeight(600);
+    }).setWidth(800).setHeight(600).setBackgroundColor("rgb(18, 18, 18)");
     return await activityLineChart.toBinary();
 }
-async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
+async function makeActivityDistGraph(percentiles, formatter, myName, oppName, myId, oppId) {
     let max = 0;
     percentiles.forEach(slice => {
         if(slice.myActivity > max)
@@ -369,16 +419,18 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
     const data = {
         labels: percentiles.map(slice => formatter.format(slice.max) + "-" + formatter.format(slice.min)),
         datasets: [{
-            label: myName,
+            label: myName + " (" + myId + ")",
             data: percentiles.map(slice => slice.myActivity),
-            backgroundColor: "rgb(255, 0, 0)",
+            backgroundColor: "rgb(255, 100, 100",
+            color: "rgb(224, 224, 224)",
         }]
     };
     if(oppName) {
         data.datasets.push({
-            label: oppName,
+            label: oppName + " (" + oppId + ")",
             data: percentiles.map(slice => slice.oppActivity),
-            backgroundColor: "rgb(0, 0, 255)"
+            backgroundColor: "rgb(100, 100, 255)",
+            color: "rgb(224, 224, 224)",
         });
     }
     const activityDistChart = new QuickChart().setVersion("3")
@@ -390,19 +442,25 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
                 x: {
                     title: {
                         display: true,
-                        text: "Stat Percentiles"
-                    }
+                        text: "Stat Percentiles",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
+                    },
                 },
                 y: {
                     title: {
                         display: true,
-                        text: "Average Activity"
+                        text: "Average Activity",
+                        color: "rgb(224, 224, 224)",
                     },
                     max: max,
                     ticks: {
                         callback: function(value) {
                             return value + "%";
-                        }
+                        },
+                        color: "rgb(224, 224, 224)",
                     }
                 }
             },
@@ -411,17 +469,24 @@ async function makeActivityDistGraph(percentiles, formatter, myName, oppName) {
                     anchor: "end",
                     align: "top",
                     formatter: (value) => value.toFixed(1),
+                    color: "rgb(224, 224, 224)",
                 },
                 title: {
                     display: true,
-                    text: "Activity Distribution Graph"
-                }
+                    text: "Activity Distribution Graph",
+                    color: "rgb(224, 224, 224)",
+                },
+                legend: {
+                    labels: {
+                        color: "rgb(224, 224, 224)",
+                    },
+                },
             }
         }
-    }).setWidth(800).setHeight(600);
+    }).setWidth(800).setHeight(600).setBackgroundColor("rgb(18, 18, 18)");
     return await activityDistChart.toBinary();
 }
-async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName)
+async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppName, myId, oppId)
 {
     const myActivityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
     let activityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
@@ -444,13 +509,18 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
         if(data.numactive < min)
             min = data.numactive;
     }
+    let labelConfig = `return [{
+        text: ${JSON.stringify(myName + " (" + myId + ")")},
+        fillStyle: "rgb(255, 100, 100)",
+        lineWidth: 0,
+    }]`;
     if(oppName) {
         const oppActivityPerDay = Array.from({ length: 7 }, () => Array(24).fill(null));
         for(const data of oppFacActivity) {
             const date = new Date(data.timestamp);
-            let day = date.getDay();
-            let hour = date.getHours();
-            if(date.getMinutes() > 30)
+            let day = date.getUTCDay();
+            let hour = date.getUTCHours();
+            if(date.getUTCMinutes() > 30)
                 hour++;
             if(hour > 23) {
                 day++;
@@ -470,6 +540,15 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     if(activityPerDay[r][c] < min)
                         min = activityPerDay[r][c];
                 }
+        labelConfig = `return [{
+            text: ${JSON.stringify(myName + " (" + myId + ")")},
+            fillStyle: "rgb(255, 100, 100)",
+            lineWidth: 0,
+        }, {
+            text: ${JSON.stringify(oppName + " (" + oppId + ")")},
+            fillStyle: "rgb(100, 100, 255)",
+            lineWidth: 0,
+        }]`
     }
     else
         activityPerDay = myActivityPerDay;
@@ -500,7 +579,11 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     stacked: true,
                     title: {
                         display: true,
-                        text: "Hour"
+                        text: "Hour",
+                        color: "rgb(224, 224, 224)",
+                    },
+                    ticks: {
+                        color: "rgb(224, 224, 224)",
                     },
                     categoryPercentage: 1.0,
                     barPercentage: 1.0,
@@ -509,10 +592,12 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     stacked: true,
                     title: {
                         display: true,
-                        text: "Day"
+                        text: "Day",
+                        color: "rgb(224, 224, 224)",
                     },
                     ticks: {
                         stepSize: 0.5,
+                        color: "rgb(224, 224, 224)",
                         callback: function(value) {
                             switch(value) {
                                 case 0.5: return "Sunday";
@@ -534,55 +619,41 @@ async function makeActivityHeatmap(myFacActivity, oppFacActivity, myName, oppNam
                     formatter: function(value, context) {
                         return context.chart.data.datasets[context.datasetIndex].dataLabels[context.dataIndex];
                     },
-                    color: "rgb(255, 255, 255)"
+                    color: "rgb(224, 224, 224)",
                 },
                 title: {
+                    color: "rgb(224, 224, 224)",
                     display: true,
                     text: "Activity Heatmap"
                 },
                 legend: {
-                    labels: { //need to stringify generateLabels like this to reference outside variables
-                        generateLabels: new Function('chart', `
-                            return [{
-                                text: ${JSON.stringify(myName)},
-                                fillStyle: "rgb(255, 0, 0)",
-                                lineWidth: 0,
-                            }, {
-                                text: ${JSON.stringify(oppName)},
-                                fillStyle: "rgb(0, 0, 255)",
-                                lineWidth: 0,
-                            }]
-                        `)
+                    labels: {
+                        generateLabels: new Function('chart', `${labelConfig}`),
                     }
                 },
-            }
+            },
+            color: "rgb(224, 224, 224)",
         }
-    }).setWidth(800).setHeight(600);
+    }).setWidth(800).setHeight(600).setBackgroundColor("rgb(18, 18, 18)");
     return { "graph": await activityHeatmapChart.toBinary(), "count": [allCount, myCount, oppCount] };
 }
 async function generateColors(facActivity, min, max)
 {
     try {
         let allCount = 0, myCount = 0, oppCount = 0;
-        const colors = new Array(24).fill("rgb(255, 255, 255)");
+        const colors = new Array(24).fill("rgb(18, 18, 18)");
         for(const i in facActivity) {
             const data = facActivity[i];
             if(data === null) continue;
-<<<<<<< HEAD
             allCount++;
             if(data > 0) {
-=======
-            if(data > 0)
->>>>>>> 8a47deb44efd7909c8b7595bfffaf5a16712eb4d
-                colors[i] = `rgb(${Math.round(255 * data / max)}, 0, 0)`;
+                colors[i] = `rgb(${Math.round(255 * data / max)}, ${Math.round(100 * data / max)}, ${Math.round(100 * data / max)})`;
                 myCount++;
             }
             else if(data < 0) {
-                colors[i] = `rgb(0, 0, ${Math.round(255 * data / min)})`;
+                colors[i] = `rgb(${Math.round(100 * data / min)}, ${Math.round(100 * data / min)}, ${Math.round(255 * data / min)})`;
                 oppCount++;
             }
-            else
-                colors[i] = `rgb(0, 0, 0)`;
         }
         return { "colors": colors, "count": [allCount, myCount, oppCount] };
     }
