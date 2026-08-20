@@ -38,7 +38,7 @@ module.exports = {
                 return await interaction.editReply(`Stopped tracking ${monitor[0].name + " (" + monitor[0].id + ")"}`);
             }
             else {
-                const facData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${process.env.API_KEY}`, channel);
+                const facData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${process.env.API_KEY}&comment=ActivityTracker`);
                 if("error" in facData)
                     return interaction.editReply(`No faction ${facId} found`);
                 await queryRetry("INSERT INTO monitor_store (id, name) VALUES (?, ?)", [facId, facData.name]);

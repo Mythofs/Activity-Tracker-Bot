@@ -80,7 +80,7 @@ async function monitorInterval(apiKey, channel)
 }
 async function checkActivity(apiKey, facId, channel) {
     try {    
-        const memberData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${apiKey}`);
+        const memberData = await safeFetch(`https://api.torn.com/faction/${facId}?selections=basic&key=${apiKey}&comment=ActivityTracker`);
         if(!memberData) return;
         let count = 0;
         for(const [id, member] of Object.entries(memberData.members)) {
